@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlantCare Hub</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            background-image:
+                url(static/uploads/plantCareimage.jpeg);
+
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* TOP RIGHT BUTTONS */
+        .top-buttons {
+            position: fixed;
+            top: 28px;
+            right: 30px;
+
+            display: flex;
+            gap: 14px;
+
+            z-index: 1000;
+        }
+
+        .top-buttons a {
+            text-decoration: none;
+        }
+
+        .top-buttons button {
+            padding: 11px 22px;
+
+            border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.5);
+
+            background: rgba(0,0,0,0.55);
+            color: white;
+
+            font-size: 14px;
+            font-weight: 700;
+
+            cursor: pointer;
+
+            backdrop-filter: blur(8px);
+
+            transition: 0.25s ease;
+        }
+
+        .top-buttons button:hover {
+            transform: translateY(-2px);
+            background: #19e85b;
+            color: #06150b;
+            border-color: #19e85b;
+            box-shadow: 0 0 20px rgba(25,232,91,0.45);
+        }
+
+        /* GET STARTED */
+        .top-buttons .get-started {
+            background: #19e85b;
+            color: #06150b;
+            border-color: #19e85b;
+        }
+
+        .top-buttons .get-started:hover {
+            background: #27ff70;
+        }
+
+        /* MOBILE */
+        @media (max-width: 600px) {
+
+            .top-buttons {
+                top: 18px;
+                right: 15px;
+                gap: 7px;
+            }
+
+            .top-buttons button {
+                padding: 9px 12px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="top-buttons">
+
+        <a href="/login">
+            <button class="get-started">
+                Get Started
+            </button>
+        </a>
+
+
+        <a href="/">
+          <button>
+              Home
+          </button>
+        </a>
+
+
+        <a href="/login">
+            <button>
+                Login
+            </button>
+        </a>
+
+        <a href="/register">
+            <button>
+                Register
+            </button>
+        </a>
+
+    </div>
+
+</body>
+</html>

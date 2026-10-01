@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PlantCare Hub Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+</head>
+<body class="dashboard-page">
+
+<div class="sidebar">
+<div class="logo">
+<h2>🌿 PlantCare Hub</h2>
+<p>The Future of Smart Agriculture</p>
+</div>
+
+<ul>
+<li><a href="/dashboard">🏠 Dashboard</a></li>
+<li><a href="/addplant">🌱 Add Plant</a></li>
+<li><a href="/plantlist">📋 Plant List</a></li>
+<li><a href="/reminders">⏰ Water Reminder</a></li>
+<li><a href="/fertilizer">🧪 Fertilizer</a></li>
+<li><a href="/health">💚 Plant Health</a></li>
+<li><a href="{{ url_for('ai') }}" class="ai-menu-link">🤖 <span>PlantCare AI</span></a></li>
+<li><a href="/categories">🌿 Categories</a></li>
+<li><a href="/report">📄 Plant Reports</a></li>
+<li><a href="/profile">👤 Profile</a></li>
+
+{% if session.get("user")|lower == ADMIN_EMAIL|lower %}
+<li><a href="/admin">🛡️ Admin Panel</a></li>
+{% endif %}
+
+<li><a href="/about">ℹ️ About</a></li>
+<li><a href="/logout">🚪 Logout</a></li>
+</ul>
+</div>
+
+<div class="main-content">
+<div class="topbar">
+<h1>Dashboard</h1>
+<div class="user">👤 {{ session["user"] }}</div>
+</div>
+
+<div class="welcome">
+<h2>Welcome To PlantCare Hub</h2>
+<p>Smart Agriculture & Plant Information System</p>
+</div>
+
+<div class="cards">
+<div class="card"><h3>Total Plants</h3><h1>{{ total_plants }}</h1></div>
+<div class="card"><h3>Healthy Plants</h3><h1>{{ healthy }}</h1></div>
+<div class="card"><h3>Need Water</h3><h1>{{ need_water }}</h1></div>
+<div class="card"><h3>Need Fertilizer</h3><h1>{{ need_fertilizer }}</h1></div>
+</div>
+
+<h2>Recent Plants</h2>
+
+<table>
+<tr>
+<th>Image</th>
+<th>Plant Name</th>
+<th>Scientific Name</th>
+<th>Water</th>
+<th>Sunlight</th>
+<th>Category</th>
+<th>Health</th>
+<th>Action</th>
+</tr>
+
+{% for plant in plants %}
+<tr>
+<td>
+<img src="{{ url_for('static',filename='uploads/' + plant[6]) }}" width="70" height="70" style="border-radius:10px;object-fit:cover;">
+</td>
+<td>{{ plant[1] }}</td>
+<td>{{ plant[2] }}</td>
+<td>{{ plant[3] }}</td>
+<td>{{ plant[4] }}</td>
+<td>{{ plant[8] }}</td>
+<td>{{ plant[11] }}</td>
+<td>
+<a href="/edit/{{ plant[0] }}">✏ Edit</a>
+|
+<a href="/delete/{{ plant[0] }}">🗑 Delete</a>
+</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+
+</body>
+</html>

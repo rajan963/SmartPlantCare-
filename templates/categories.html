@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Plant Categories</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+</head>
+<body>
+
+<h1>🌿 Plant Categories</h1>
+
+{% if categories %}
+<table border="1" cellpadding="10">
+<tr><th>Category</th><th>Total Plants</th></tr>
+
+{% for category in categories %}
+<tr>
+<td><a href="/category/{{ category['category'] }}">{{ category["category"] }}</a></td>
+<td>{{ category["total"] }}</td>
+</tr>
+{% endfor %}
+
+</table>
+{% else %}
+<p>No Categories Found.</p>
+{% endif %}
+
+<br>
+<a href="/dashboard"><button>⬅ Back to Dashboard</button></a>
+
+</body>
+</html>

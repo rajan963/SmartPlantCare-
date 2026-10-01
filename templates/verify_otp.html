@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>PlantCare Hub - Verify OTP</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+
+<body class="auth-page">
+
+<div class="auth-overlay">
+
+    <div class="auth-card otp-card">
+
+        <div class="brand">
+            <span class="brand-icon">🌱</span>
+            <span>Plant<span>Care</span> Hub</span>
+        </div>
+
+        <div class="otp-icon">
+            ✉️
+        </div>
+
+        <h1>Verify Your Email</h1>
+
+        <p class="auth-subtitle">
+            We've sent a 6-digit OTP to your Gmail address.
+        </p>
+
+
+        {% if error %}
+
+        <div class="auth-error">
+            {{ error }}
+        </div>
+
+        {% endif %}
+
+
+        <form action="{{ url_for('verify_otp') }}" method="POST">
+
+            <label>Enter OTP</label>
+
+            <div class="input-box otp-input">
+
+                <span>🔢</span>
+
+                <input
+                    type="text"
+                    name="otp"
+                    placeholder="Enter 6-digit OTP"
+                    maxlength="6"
+                    inputmode="numeric"
+                    pattern="[0-9]{6}"
+                    required>
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="auth-button">
+
+                Verify OTP
+
+            </button>
+
+        </form>
+
+
+        <div class="auth-bottom">
+
+            Didn't receive OTP?
+
+            <a href="{{ url_for('login') }}">
+                Try Again
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>

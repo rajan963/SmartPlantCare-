@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ category }} Plants</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f5f8f6;color:#173b25;min-height:100vh}
+.header{height:75px;padding:0 40px;display:flex;align-items:center;justify-content:space-between;background:white;border-bottom:1px solid #dce8df;box-shadow:0 2px 10px #00000012}
+h1{font-size:27px;color:#16833d}
+.back{text-decoration:none;background:#20b957;color:white;padding:10px 20px;border-radius:8px;font-weight:bold}
+.container{padding:30px 40px}
+.plants{display:grid;grid-template-columns:repeat(3,1fr);gap:25px}
+.card{background:white;border:1px solid #dce8df;border-radius:16px;overflow:hidden;box-shadow:0 5px 18px #00000012;transition:.2s}
+.card:hover{transform:translateY(-4px);box-shadow:0 10px 25px #00000020}
+.card img{width:100%;height:270px;object-fit:contain;display:block;background:white}
+.info{padding:17px}
+.name{font-size:21px;font-weight:bold;color:#16833d}
+.scientific{color:#777;font-style:italic;margin:5px 0 13px}
+.info p{padding:7px 0;border-bottom:1px solid #edf1ee;font-size:14px}
+
+.health{
+    margin-top:14px;
+    padding:10px 15px;
+    border-radius:20px;
+    font-weight:bold;
+}
+
+.health.healthy{
+    background:#d9f7df;
+    color:#187a35;
+}
+
+.health.attention{
+    background:#fff0c2;
+    color:#9a6a00;
+}
+
+.health.sick{
+    background:#ffd6d6;
+    color:#c62828;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+<h1>🌿 {{ category }} Plants</h1>
+<a href="/categories" class="back">← Back</a>
+</div>
+
+<div class="container">
+{% if plants %}
+<div class="plants">
+
+{% for plant in plants %}
+<div class="card">
+
+<img src="{{ url_for('static',filename='uploads/'+plant['image']) }}">
+
+<div class="info">
+<div class="name">{{ plant["name"] }}</div>
+<div class="scientific">{{ plant["scientific_name"] }}</div>
+
+<p>💧 <b>Water:</b> {{ plant["water"] }}</p>
+<p>☀️ <b>Sunlight:</b> {{ plant["sunlight"] }}</p>
+<p>🌱 <b>Soil:</b> {{ plant["soil"] }}</p>
+<p>🏷️ <b>Category:</b> {{ plant["category"] }}</p>
+
+{% if plant["health_status"] == "Healthy" %}
+<div class="health healthy">💚 Health: Healthy</div>
+{% elif plant["health_status"] == "Needs Attention" %}
+<div class="health attention">⚠️ Health: Needs Attention</div>
+{% else %}
+<div class="health sick">🔴 Health: Sick</div>
+{% endif %}
+
+</div>
+</div>
+{% endfor %}
+
+</div>
+{% else %}
+<p>No Plants Found.</p>
+{% endif %}
+</div>
+
+</body>
+</html>

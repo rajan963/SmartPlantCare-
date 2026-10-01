@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Fertilizer Reminder</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+<h1>🌱 Fertilizer Reminder</h1>
+
+<table border="1" cellpadding="10" cellspacing="0" width="100%">
+<tr><th>Plant</th><th>Fertilizer Date</th><th>Status</th><th>Action</th></tr>
+
+{% for plant in fertilizers %}
+<tr>
+<td>{{ plant.plant }}</td>
+<td>{{ plant.fertilizer_date }}</td>
+<td>
+{% if plant.status=="upcoming" %}
+<span style="color:green;font-weight:bold;">🟢 upcoming</span>
+{% elif plant.status=="Today" %}
+<span style="color:orange;font-weight:bold;">🟠 Today</span>
+{% elif plant.status=="Overdue" %}
+<span style="color:red;font-weight:bold;">🔴 Overdue</span>
+{% else %}
+<span style="color:blue;font-weight:bold;">🔵 Completed</span>
+{% endif %}
+</td>
+<td>
+{% if plant.status!="Completed" %}
+<a href="/complete_fertilizer/{{ plant.id }}"><button>Submit</button></a>
+{% else %}
+✔ Done
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</table>
+
+<br>
+<a href="/dashboard"><button>⬅ Back to Dashboard</button></a>
+</div>
+</body>
+</html>

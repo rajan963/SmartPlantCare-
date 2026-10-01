@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Edit Plant | PlantCare Hub</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+<style>
+.image-preview{margin:12px 0 18px}
+.image-preview img{width:160px;height:160px;object-fit:cover;border-radius:15px;border:2px solid #ddd;display:block}
+.image-note{font-size:13px;color:#777;margin-top:7px}
+input[type="file"]{padding:10px}
+</style>
+</head>
+<body>
+
+<h1>🌿 PlantCare Hub</h1>
+<h2>✏️ Edit Plant</h2>
+
+<form method="POST" enctype="multipart/form-data">
+
+<label>🌱 Plant Name</label>
+<input type="text" name="name" value="{{ plant[1] }}" required>
+
+<label>🔬 Scientific Name</label>
+<input type="text" name="scientific_name" value="{{ plant[2] }}" required>
+
+<label>🌱 Soil Type</label>
+<input type="text" name="soil" value="{{ plant[5] }}" required>
+
+<label>🖼️ Plant Image</label>
+{% if plant[6] %}
+<div class="image-preview">
+<img src="{{ url_for('static',filename='uploads/' + plant[6]) }}" alt="Current Plant Image">
+<p class="image-note">Current Plant Image</p>
+</div>
+{% endif %}
+
+<input type="file" name="image" accept="image/jpeg,image/png,image/webp">
+<p class="image-note">Select a new image if you want to replace the current image.</p>
+
+<label>🌿 Plant Category</label>
+<select name="category" required>
+<option value="Flowering" {% if plant[8] == "Flowering" %}selected{% endif %}>Flowering Plants</option>
+<option value="Medicinal" {% if plant[8] == "Medicinal" %}selected{% endif %}>Medicinal Plants</option>
+<option value="Indoor" {% if plant[8] == "Indoor" %}selected{% endif %}>Indoor Plants</option>
+<option value="Outdoor" {% if plant[8] == "Outdoor" %}selected{% endif %}>Outdoor Plants</option>
+<option value="Vegetable" {% if plant[8] == "Vegetable" %}selected{% endif %}>Vegetable Plants</option>
+</select>
+
+<label>💧 Water Requirement</label>
+<input type="text" name="water" value="{{ plant[3] }}" required>
+
+<label>☀️ Sunlight Requirement</label>
+<input type="text" name="sunlight" value="{{ plant[4] }}" required>
+
+<label>🌧️ Water Reminder Date</label>
+<input type="date" name="watering_date" value="{{ plant[9] }}" required>
+
+<label>🧪 Fertilizer Date</label>
+<input type="date" name="fertilizer_date" value="{{ plant[10] }}" required>
+
+<label>💚 Plant Health Status</label>
+<select name="health_status" required>
+<option value="Healthy" {% if plant[11] == "Healthy" %}selected{% endif %}>Healthy</option>
+<option value="Needs Attention" {% if plant[11] == "Needs Attention" %}selected{% endif %}>Needs Attention</option>
+<option value="Sick" {% if plant[11] == "Sick" %}selected{% endif %}>Sick</option>
+</select>
+
+<br><br>
+<button type="submit">💾 Update Plant</button>
+</form>
+
+<br>
+<a href="/plantlist">⬅ Back to Plant List</a>
+
+</body>
+</html>

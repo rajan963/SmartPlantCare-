@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PlantCare Hub - Create Account</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;min-height:100%}
+body{
+ min-height:100vh;font-family:Arial,Helvetica,sans-serif;
+ background:linear-gradient(rgba(0,20,10,.38),rgba(0,20,10,.55)),url("static/uploads/plantCareimage.jpeg");
+ background-size:100% 100%;background-position:center;background-repeat:no-repeat;background-attachment:fixed;
+ display:flex;justify-content:center;align-items:center;padding:30px 15px;color:white
+}
+.card{
+ width:455px;max-width:100%;padding:27px 38px 25px;background:rgba(3,20,13,.86);
+ border:1px solid rgba(90,255,130,.45);border-radius:22px;
+ box-shadow:0 0 18px rgba(0,255,90,.18),0 0 45px rgba(0,255,90,.12);
+ backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+}
+.logo{text-align:center;font-size:27px;font-weight:800;margin-bottom:13px;letter-spacing:.2px}
+.logo .plant{margin-right:5px}
+.logo .green{color:#45ff50;text-shadow:0 0 8px rgba(69,255,80,.5)}
+h1{text-align:center;font-size:31px;font-weight:800;margin-bottom:6px}
+.sub{text-align:center;color:#ddd;font-size:12.5px;font-weight:600;margin-bottom:20px}
+.error{
+ width:100%;padding:10px 12px;margin-bottom:13px;text-align:center;color:#ffb8b8;
+ background:rgba(255,50,50,.14);border:1px solid rgba(255,90,90,.65);border-radius:9px;
+ font-size:13px;font-weight:bold;box-shadow:0 0 10px rgba(255,60,60,.08)
+}
+.field{margin-top:12px}
+.field label{display:block;margin-bottom:6px;font-size:13px;font-weight:700;color:#f0f0f0}
+.input-box{position:relative}
+.input-box input{
+ width:100%;height:47px;padding:0 14px;border-radius:10px;
+ border:1px solid rgba(255,255,255,.30);background:rgba(255,255,255,.18);
+ color:white;font-size:14px;outline:none;transition:.25s
+}
+.input-box input::placeholder{color:#d0d0d0}
+.input-box input:focus{
+ border-color:#43ff55;background:rgba(255,255,255,.22);
+ box-shadow:0 0 0 2px rgba(67,255,85,.10),0 0 14px rgba(67,255,85,.28)
+}
+.password-input{padding-right:48px!important}
+.eye{
+ position:absolute;right:14px;top:50%;transform:translateY(-50%);
+ cursor:pointer;font-size:17px;opacity:.85;user-select:none
+}
+.eye:hover{opacity:1}
+.agreement{
+ display:flex;align-items:center;gap:7px;margin-top:13px;color:#d5d5d5;
+ font-size:11.5px;font-weight:600
+}
+.agreement input{width:15px;height:15px;accent-color:#39ff42;cursor:pointer}
+button{
+ width:100%;height:50px;margin-top:18px;border:none;border-radius:10px;
+ background:#39ff32;color:#031006;font-size:15px;font-weight:800;cursor:pointer;
+ box-shadow:0 0 15px rgba(57,255,50,.45),0 0 28px rgba(57,255,50,.18);transition:.25s
+}
+button:hover{
+ background:#68ff60;transform:translateY(-1px);
+ box-shadow:0 0 20px rgba(57,255,50,.60),0 0 35px rgba(57,255,50,.25)
+}
+button:active{transform:scale(.98)}
+.bottom{text-align:center;margin-top:17px;color:#ddd;font-size:12.5px;font-weight:600}
+.bottom a{color:#43ff50;text-decoration:none;font-weight:800}
+.bottom a:hover{text-decoration:underline}
+@media(max-width:520px){
+ body{padding:20px 12px}
+ .card{width:100%;padding:24px 20px 23px;border-radius:19px}
+ .logo{font-size:24px}h1{font-size:28px}.sub{font-size:11px}
+}
+</style>
+</head>
+
+<body>
+<div class="card">
+
+<div class="logo">
+<span class="plant">🌱</span> PlantCare <span class="green">Hub</span>
+</div>
+
+<h1>Create Account</h1>
+
+<div class="sub">
+Join PlantCare Hub — The Future of Smart Agriculture
+</div>
+
+{% if error %}
+<div class="error">⚠️ {{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/register" autocomplete="off">
+
+<div class="field">
+<label for="fullname">Full Name</label>
+<div class="input-box">
+<input type="text" id="fullname" name="fullname"
+placeholder="Enter your full name"
+value="{{ request.form.get('fullname', '') }}"
+autocomplete="off" autocapitalize="words" spellcheck="false" required>
+</div>
+</div>
+
+<div class="field">
+<label for="email">Gmail Address</label>
+<div class="input-box">
+<input type="email" id="email" name="email"
+placeholder="Enter your Gmail address"
+value="{{ request.form.get('email', '') }}"
+autocomplete="off" autocapitalize="none" spellcheck="false" required>
+</div>
+</div>
+
+<div class="field">
+<label for="username">Username</label>
+<div class="input-box">
+<input type="text" id="username" name="username"
+placeholder="Create username"
+value="{{ request.form.get('username', '') }}"
+autocomplete="off" autocapitalize="none" spellcheck="false" required>
+</div>
+</div>
+
+<div class="field">
+<label for="password">Password</label>
+<div class="input-box">
+<input type="password" id="password" name="password"
+class="password-input" placeholder="Create password"
+autocomplete="new-password" required>
+<span class="eye" onclick="togglePassword()" id="eye">👁</span>
+</div>
+</div>
+
+<label class="agreement">
+<input type="checkbox" name="agreement" required>
+<span>I agree to use PlantCare Hub responsibly.</span>
+</label>
+
+<button type="submit">Create Account →</button>
+</form>
+
+<div class="bottom">
+Already have an account?
+<a href="/login">Login</a>
+</div>
+
+</div>
+
+<script>
+function togglePassword(){
+ const password=document.getElementById("password"),eye=document.getElementById("eye");
+ if(password.type==="password"){
+  password.type="text";eye.textContent="🙈";
+ }else{
+  password.type="password";eye.textContent="👁";
+ }
+}
+</script>
+
+</body>
+</html>

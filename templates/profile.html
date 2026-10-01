@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>My Profile | PlantCare Hub</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+<style>
+body{
+ margin:0;min-height:100vh;font-family:Arial;color:white;
+ background:linear-gradient(#03180dcc,#03180df2),url("/static/uploads/plantCareimage.jpeg") center/cover fixed
+}
+.profile{
+ max-width:800px;margin:70px auto;padding:35px;background:#0b2118dd;
+ border:1px solid #ffffff22;border-radius:22px;backdrop-filter:blur(15px);
+ box-shadow:0 20px 50px #0008
+}
+h1{margin-top:0;color:#19ff69;font-size:35px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px 0}
+.box{padding:20px;border-radius:14px;background:#ffffff0b;border:1px solid #ffffff18}
+.box small{color:#91a69c;display:block;margin-bottom:8px}
+.box strong{font-size:17px}
+.btn{
+ display:inline-block;padding:14px 22px;margin-right:10px;border-radius:10px;
+ text-decoration:none;font-weight:bold;background:#19ff69;color:#03150b
+}
+.back{background:#ffffff12;color:white;border:1px solid #ffffff22}
+</style>
+</head>
+<body>
+
+<div class="profile">
+<h1>👤 My Profile</h1>
+<p>Manage your PlantCare Hub account</p>
+
+<div class="grid">
+<div class="box"><small>FULL NAME</small><strong>{{ user["fullname"] }}</strong></div>
+<div class="box"><small>USERNAME</small><strong>{{ user["username"] }}</strong></div>
+<div class="box"><small>EMAIL</small><strong>{{ user["email"] }}</strong></div>
+<div class="box"><small>PASSWORD</small><strong>••••••••</strong></div>
+</div>
+
+<a href="/edit_profile" class="btn">✏️ Edit Profile</a>
+<a href="/dashboard" class="btn back">← Dashboard</a>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PlantCare AI Test</title>
+</head>
+
+<body>
+
+    <h1>🌱 PlantCare AI Test</h1>
+
+    <form id="aiForm" enctype="multipart/form-data">
+
+        <input
+            type="text"
+            name="question"
+            id="question"
+            placeholder="Ask a plant question..."
+        >
+
+        <br><br>
+
+        <input
+            type="file"
+            name="image"
+            id="image"
+            accept="image/*"
+        >
+
+        <br><br>
+
+        <button type="submit">Ask PlantCare AI</button>
+
+    </form>
+
+    <hr>
+
+    <div id="result">
+        AI response will appear here...
+    </div>
+
+
+    <script>
+
+        document.getElementById("aiForm").addEventListener("submit", async function(e) {
+
+            e.preventDefault();
+
+            const formData = new FormData(this);
+
+            document.getElementById("result").innerText =
+                "🌱 PlantCare AI is thinking...";
+
+            try {
+
+                const response = await fetch("/plant-ai", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+
+                    document.getElementById("result").innerText =
+                        data.answer;
+
+                } else {
+
+                    document.getElementById("result").innerText =
+                        data.answer || "Something went wrong.";
+
+                }
+
+            } catch (error) {
+
+                document.getElementById("result").innerText =
+                    "Connection error. Please try again.";
+
+                console.error(error);
+            }
+
+        });
+
+    </script>
+
+</body>
+</html>

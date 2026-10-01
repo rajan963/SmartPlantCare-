@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PlantCare Hub - Login</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+ min-height:100vh;font-family:Arial,Helvetica,sans-serif;color:white;
+ background:linear-gradient(90deg,rgba(0,0,0,.72),rgba(0,20,10,.58)),url("/static/uploads/plantCareimage.jpeg");
+ background-size:100% 100%;background-position:center;background-repeat:no-repeat;
+ display:flex;align-items:center;justify-content:center;overflow:hidden
+}
+body:before,body:after{
+ content:"";position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none
+}
+body:before{width:500px;height:500px;background:rgba(0,255,100,.12);top:-180px;left:-150px}
+body:after{width:400px;height:400px;background:rgba(0,255,140,.10);right:-150px;bottom:-150px}
+
+.login-wrapper{width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px}
+.login-card{
+ width:430px;max-width:100%;padding:40px;border-radius:24px;
+ background:linear-gradient(145deg,rgba(17,25,22,.94),rgba(7,15,12,.86));
+ border:1px solid rgba(255,255,255,.15);
+ box-shadow:0 30px 80px rgba(0,0,0,.70),0 0 45px rgba(0,255,100,.12);
+ backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+ position:relative;overflow:hidden
+}
+.login-card:before{
+ content:"";position:absolute;width:180px;height:180px;background:rgba(0,255,100,.14);
+ filter:blur(70px);border-radius:50%;right:-80px;top:-70px
+}
+.brand{
+ text-align:center;font-size:27px;font-weight:800;margin-bottom:25px;
+ position:relative;z-index:2
+}
+.brand span{color:#19ff69}
+h1{
+ text-align:center;font-size:36px;font-weight:800;margin-bottom:8px;
+ position:relative;z-index:2
+}
+.subtitle,.otp-text{
+ text-align:center;color:#aeb8b2;font-size:14px;line-height:1.5
+}
+.subtitle{margin-bottom:30px}
+.error,.message{
+ padding:12px;margin-bottom:18px;border-radius:10px;text-align:center;font-size:13px
+}
+.error{color:#ffbaba;background:rgba(255,40,40,.10);border:1px solid rgba(255,70,70,.25)}
+.message{color:#9dffbb;background:rgba(0,255,100,.08);border:1px solid rgba(0,255,100,.20)}
+label{
+ display:block;font-size:14px;font-weight:700;color:#f1f5f2;margin:18px 0 8px
+}
+.input-box{
+ display:flex;align-items:center;width:100%;height:56px;padding:0 15px;
+ border-radius:12px;background:rgba(70,80,76,.48);
+ border:1px solid rgba(255,255,255,.10);transition:.25s ease
+}
+.input-box:focus-within{
+ border-color:#19ff69;
+ box-shadow:0 0 0 3px rgba(25,255,105,.08),0 0 25px rgba(25,255,105,.12)
+}
+.input-icon{width:25px;font-size:18px;color:#19ff69}
+.input-box input{
+ width:100%;height:54px;border:none;outline:none;background:transparent;
+ color:white;font-size:15px;padding-left:8px
+}
+.input-box input::placeholder{color:#aeb6b1}
+.show-btn{
+ border:none;background:transparent;color:#bfc8c2;font-size:17px;cursor:pointer
+}
+.show-btn:hover{color:#19ff69}
+.login-btn{
+ width:100%;height:57px;margin-top:25px;border:none;border-radius:12px;
+ background:linear-gradient(90deg,#0cff5b,#22ff78);color:#041208;
+ font-size:17px;font-weight:800;cursor:pointer;
+ box-shadow:0 0 25px rgba(25,255,105,.25);transition:.25s ease
+}
+.login-btn:hover{transform:translateY(-2px);box-shadow:0 0 35px rgba(25,255,105,.45)}
+.forgot{text-align:right;margin-top:12px;font-size:13px}
+.forgot a,.bottom a{color:#19ff69;font-weight:700;text-decoration:none}
+.forgot a:hover,.bottom a:hover{text-decoration:underline}
+.security{text-align:center;color:#89958e;font-size:12px;margin-top:18px}
+.security span{color:#19ff69}
+.bottom{text-align:center;margin-top:24px;color:#aeb7b1;font-size:14px}
+.bottom a{font-weight:800}
+.otp-icon{
+ width:70px;height:70px;margin:0 auto 18px;display:flex;align-items:center;
+ justify-content:center;border-radius:50%;font-size:30px;
+ background:rgba(25,255,105,.08);border:1px solid rgba(25,255,105,.25);
+ box-shadow:0 0 30px rgba(25,255,105,.15)
+}
+.otp-title{text-align:center;font-size:28px;margin-bottom:8px}
+.otp-text{margin-bottom:20px}
+.otp-email{color:#19ff69;font-weight:700}
+.otp-input input{text-align:center;font-size:24px;font-weight:800;letter-spacing:8px}
+.home-btn{
+ display:block;width:100%;height:50px;margin-top:12px;border:1px solid rgba(255,255,255,.15);
+ border-radius:12px;background:rgba(255,255,255,.08);color:white;
+ text-align:center;text-decoration:none;font-size:15px;font-weight:700;
+ line-height:50px;transition:.25s ease
+}
+.home-btn:hover{color:#19ff69;border-color:#19ff69;background:rgba(25,255,105,.08)}
+@media(max-width:600px){
+ .login-wrapper{padding:18px}
+ .login-card{padding:30px 22px;border-radius:20px}
+ h1{font-size:30px}.brand{font-size:24px}
+}
+</style>
+</head>
+
+<body>
+<div class="login-wrapper">
+<div class="login-card">
+
+{% if forgot_mode %}
+
+<div class="brand">🌿 PlantCare <span>Hub</span></div>
+<div class="otp-icon">🔑</div>
+<h1 class="otp-title">Forgot Password?</h1>
+<div class="otp-text">Enter your registered Gmail address.<br>We will send you a secure OTP.</div>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="POST" action="/forgot-password" autocomplete="off">
+<label>Gmail Address</label>
+<div class="input-box">
+<div class="input-icon">✉</div>
+<input type="email" name="email" placeholder="Enter your Gmail address"
+       autocomplete="off" autocapitalize="none" spellcheck="false" required>
+</div>
+<button type="submit" class="login-btn">Send Reset OTP →</button>
+</form>
+
+<div class="security">🔐 Password reset will be verified through <span>Gmail OTP</span>.</div>
+<div class="bottom"><a href="/login">← Back to Login</a></div>
+
+{% elif forgot_otp_mode %}
+
+<div class="otp-icon">🔐</div>
+<h1 class="otp-title">Verify Reset OTP</h1>
+<div class="otp-text">A 6-digit password reset code has been sent to<br><span class="otp-email">{{ otp_email }}</span></div>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if message %}<div class="message">✓ {{ message }}</div>{% endif %}
+
+<form method="POST" action="/forgot-password/verify" autocomplete="off">
+<label>Verification Code</label>
+<div class="input-box otp-input">
+<div class="input-icon">🔐</div>
+<input type="text" name="otp" maxlength="6" inputmode="numeric"
+       autocomplete="one-time-code" placeholder="000000" required>
+</div>
+<button type="submit" class="login-btn">Verify OTP →</button>
+</form>
+
+<div class="security">⏱ OTP is valid for <span>5 minutes</span>.</div>
+<div class="bottom"><a href="/forgot-password">← Change Gmail</a></div>
+
+{% elif reset_password_mode %}
+
+<div class="otp-icon">🔑</div>
+<h1 class="otp-title">New Password</h1>
+<div class="otp-text">Create a new password for<br><span class="otp-email">{{ otp_email }}</span></div>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="POST" action="/forgot-password/reset" autocomplete="off">
+<label>New Password</label>
+<div class="input-box">
+<div class="input-icon">🔒</div>
+<input type="password" name="new_password" id="new_password"
+       placeholder="Enter new password" autocomplete="new-password" required>
+<button type="button" class="show-btn" onclick="toggleNewPassword()">👁</button>
+</div>
+
+<label>Confirm Password</label>
+<div class="input-box">
+<div class="input-icon">🔒</div>
+<input type="password" name="confirm_password" id="confirm_password"
+       placeholder="Confirm new password" autocomplete="new-password" required>
+</div>
+
+<button type="submit" class="login-btn">Change Password →</button>
+</form>
+
+<div class="security">🔐 Use at least <span>6 characters</span>.</div>
+
+{% elif reset_success %}
+
+<div class="otp-icon">✓</div>
+<h1 class="otp-title">Password Updated</h1>
+
+{% if message %}<div class="message">✓ {{ message }}</div>{% endif %}
+
+<button class="login-btn" onclick="window.location.href='/login'">Login Now →</button>
+
+{% elif not otp_mode %}
+
+<div class="brand">🌿 PlantCare <span>Hub</span></div>
+<h1>Welcome Back</h1>
+<div class="subtitle">Sign in securely to access your smart plant dashboard.</div>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="POST" action="/login" autocomplete="off">
+
+<label>Email Address</label>
+<div class="input-box">
+<div class="input-icon">✉</div>
+<input type="email"
+       name="email"
+       placeholder="Enter your Gmail address"
+       autocomplete="off"
+       autocapitalize="none"
+       spellcheck="false"
+       required>
+</div>
+
+<label>Password</label>
+<div class="input-box">
+<div class="input-icon">🔒</div>
+<input type="password"
+       name="password"
+       id="password"
+       placeholder="Enter your password"
+       autocomplete="new-password"
+       required>
+<button type="button" class="show-btn" onclick="togglePassword()">👁</button>
+</div>
+
+<div class="forgot"><a href="/forgot-password">Forgot Password?</a></div>
+
+<button type="submit" class="login-btn">Continue Securely →</button>
+<a href="/" class="home-btn">← Go to Home</a>
+</form>
+
+<div class="security">🔐 <span>Gmail verification</span> will be used to secure your login.</div>
+<div class="bottom">Don't have an account? <a href="/register">Create Account</a></div>
+
+{% else %}
+
+<div class="otp-icon">✉</div>
+<h1 class="otp-title">Verify Gmail</h1>
+<div class="otp-text">A 6-digit verification code has been sent to<br><span class="otp-email">{{ otp_email }}</span></div>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if message %}<div class="message">✓ {{ message }}</div>{% endif %}
+
+<form method="POST" action="/login" autocomplete="off">
+<input type="hidden" name="action" value="verify_otp">
+
+<label>Verification Code</label>
+<div class="input-box otp-input">
+<div class="input-icon">🔐</div>
+<input type="text"
+       name="otp"
+       maxlength="6"
+       inputmode="numeric"
+       autocomplete="one-time-code"
+       placeholder="000000"
+       required>
+</div>
+
+<button type="submit" class="login-btn">Verify & Access Dashboard →</button>
+</form>
+
+<div class="security">⏱ OTP is valid for <span>5 minutes</span>.</div>
+<div class="bottom"><a href="/login">← Back to Login</a></div>
+
+{% endif %}
+
+</div>
+</div>
+
+<script>
+function togglePassword(){
+ const p=document.getElementById("password");
+ p.type=p.type==="password"?"text":"password";
+}
+
+function toggleNewPassword(){
+ const p=document.getElementById("new_password");
+ p.type=p.type==="password"?"text":"password";
+}
+</script>
+
+</body>
+</html>

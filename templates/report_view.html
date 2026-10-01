@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ title }} | PlantCare Hub</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f5f8f5;color:#17251b}
+.container{max-width:1200px;margin:40px auto;padding:20px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:30px}
+h1{margin:0}
+.btn{display:inline-block;padding:12px 20px;border-radius:10px;background:#1f7a45;color:white;text-decoration:none;font-weight:bold;border:0;cursor:pointer}
+.btn:hover{background:#155c32}
+.count{background:white;padding:18px 22px;border-radius:15px;margin-bottom:25px;box-shadow:0 5px 18px rgba(0,0,0,.07);font-size:18px;font-weight:bold}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.card{background:white;border-radius:18px;padding:18px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.card img{width:100%;height:220px;object-fit:contain;border-radius:14px;background:#f1f5f1}
+.card h2{margin:15px 0 8px}
+.card p{margin:7px 0;line-height:1.5}
+.download{text-align:center;margin-top:30px}
+.empty{text-align:center;background:white;padding:50px;border-radius:18px}
+@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.top{flex-direction:column;align-items:stretch}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="top">
+<h1>{{ title }}</h1>
+<a href="/report" class="btn">← Back to Reports</a>
+</div>
+
+<div class="count">Total Plants in Report: {{ plants|length }}</div>
+
+{% if plants %}
+<div class="grid">
+{% for plant in plants %}
+<div class="card">
+{% if plant["image"] %}
+<img src="{{ url_for('static',filename='uploads/' + plant['image']) }}">
+{% endif %}
+<h2>🌿 {{ plant["name"] }}</h2>
+<p><b>Scientific Name:</b> {{ plant["scientific_name"] }}</p>
+<p><b>Category:</b> {{ plant["category"] }}</p>
+<p><b>Water:</b> {{ plant["water"] }}</p>
+<p><b>Sunlight:</b> {{ plant["sunlight"] }}</p>
+<p><b>Soil:</b> {{ plant["soil"] }}</p>
+<p><b>Watering Date:</b> {{ plant["watering_date"] }}</p>
+<p><b>Fertilizer Date:</b> {{ plant["fertilizer_date"] }}</p>
+<p><b>Health:</b> {{ plant["health_status"] }}</p>
+</div>
+{% endfor %}
+</div>
+
+<div class="download">
+<a href="/download-report/{{ report_type }}" class="btn">📥 Download PDF</a>
+</div>
+
+{% else %}
+<div class="empty">
+<h2>No plants found 🌱</h2>
+<p>There are no plants available in this report.</p>
+</div>
+{% endif %}
+</div>
+</body>
+</html>

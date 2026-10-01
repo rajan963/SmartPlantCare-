@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Plant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<h1>🌿 PlantCare Hub</h1>
+
+<h2>Add Plant</h2>
+
+<form action="/addplant" method="POST" enctype="multipart/form-data">
+
+    <label>🌿 Plant Name</label>
+    <input type="text" name="name" placeholder="Enter Plant Name" required>
+
+    <label>🔬 Scientific Name</label>
+    <input type="text" name="scientific_name" placeholder="Enter Scientific Name" required>
+
+    <label>🌱 Soil Type</label>
+    <input type="text" name="soil" placeholder="Enter Soil Type" required>
+
+    <label>📷 Plant Image</label>
+    <input type="file" name="image" accept="image/*" required>
+
+    <label>🌿 Plant Category</label>
+    <select name="category" required>
+        <option value="">-- Select Category --</option>
+        <option value="Flowering">Flowering Plants</option>
+        <option value="Medicinal">Medicinal Plants</option>
+        <option value="Indoor">Indoor Plants</option>
+        <option value="Outdoor">Outdoor Plants</option>
+        <option value="Vegetable">Vegetable Plants</option>
+    </select>
+
+    <label>💧 Water Requirement</label>
+    <input type="text" name="water" placeholder="Example: Daily / Weekly" required>
+
+    <label>☀️ Sunlight Requirement</label>
+    <input type="text" name="sunlight" placeholder="Example: Full Sun / Partial Shade" required>
+
+    <label>🌧 Water Reminder Date</label>
+    <input type="date" name="watering_date" required>
+
+    <label>🧪 Fertilizer Date</label>
+    <input type="date" name="fertilizer_date" required>
+
+    <button type="submit">💾 Save Plant</button>
+
+</form>
+
+<br>
+
+<div style="text-align:center;">
+    <a href="/dashboard">
+<button>⬅ Back to Dashboard</button>
+</a>
+</div>
+
+</body>
+</html>
