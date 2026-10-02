@@ -25,6 +25,8 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
 print("OpenRouter key loaded:", bool(OPENROUTER_API_KEY))
 print(
     "OpenRouter key length:",
@@ -114,14 +116,18 @@ OTP_EXPIRY_MINUTES = 5
 
 def send_otp_email(receiver_email, otp):
 
-    message = EmailMessage()
+    url = "https://api.resend.com/emails"
 
-    message["Subject"] = "PlantCare Hub - Your Login OTP"
-    message["From"] = GMAIL_SENDER
-    message["To"] = receiver_email
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    message.set_content(f"""
-Hello,
+    data = {
+        "from": "onboarding@resend.dev",
+        "to": [receiver_email],
+        "subject": "PlantCare Hub - Your Login OTP",
+        "text": f"""Hello,
 
 Your PlantCare Hub login OTP is:
 
@@ -134,18 +140,18 @@ If you did not request this OTP, please ignore this email.
 Regards,
 PlantCare Hub
 Smart Agriculture System
-""")
+"""
+    }
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+    response = requests.post(
+        url,
+        headers=headers,
+        json=data,
+        timeout=20
+    )
 
-        server.starttls()
-
-        server.login(
-            GMAIL_SENDER,
-            GMAIL_APP_PASSWORD.replace(" ", "")
-        )
-
-        server.send_message(message)
+    if response.status_code >= 400:
+        raise Exception(f"Resend API error: {response.text}")
 
 @app.route("/test-ai")
 def test_ai():
