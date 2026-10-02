@@ -4,3 +4,4 @@ python-dotenv
 google-genai
 Werkzeug
 reportlab
+requests
