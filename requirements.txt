@@ -3,3 +3,4 @@ gunicorn
 python-dotenv
 google-genai
 Werkzeug
+reportlab
