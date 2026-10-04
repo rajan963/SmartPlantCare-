@@ -9,50 +9,96 @@
 @media(max-width:600px){
 html,body{width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important;padding:0!important;overflow-x:hidden!important}
 body.dashboard-page{width:100%!important;min-width:0!important}
-.dashboard-page .sidebar{position:relative!important;width:100%!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;box-sizing:border-box!important;overflow:hidden!important}
-.dashboard-page .sidebar .logo{width:100%!important;box-sizing:border-box!important;text-align:center!important;padding:18px 15px!important;margin:0!important}
-.dashboard-page .sidebar .logo h2{font-size:23px!important;margin:0 0 5px!important}
+
+.dashboard-page .sidebar{
+ position:relative!important;top:auto!important;left:auto!important;right:auto!important;
+ width:100%!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;
+ box-sizing:border-box!important;overflow:hidden!important
+}
+.dashboard-page .sidebar .logo{
+ width:100%!important;box-sizing:border-box!important;text-align:center!important;
+ padding:18px 10px!important;margin:0!important
+}
+.dashboard-page .sidebar .logo h2{font-size:24px!important;margin:0 0 5px!important}
 .dashboard-page .sidebar .logo p{font-size:11px!important;margin:0!important}
 
-.dashboard-page .sidebar ul{width:100%!important;display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;gap:0!important;margin:0!important;padding:0!important;box-sizing:border-box!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;scrollbar-width:none}
-.dashboard-page .sidebar ul::-webkit-scrollbar{display:none}
+.dashboard-page .sidebar ul{
+ width:100%!important;display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;
+ justify-content:flex-start!important;align-items:center!important;gap:0!important;margin:0!important;padding:0!important;
+ box-sizing:border-box!important;overflow-x:auto!important;overflow-y:hidden!important;
+ white-space:nowrap!important;scrollbar-width:none!important
+}
+.dashboard-page .sidebar ul::-webkit-scrollbar{display:none!important}
 .dashboard-page .sidebar ul li{flex:0 0 auto!important;width:auto!important;margin:0!important;padding:0!important}
-.dashboard-page .sidebar ul li a{display:flex!important;align-items:center!important;justify-content:center!important;min-width:115px!important;height:55px!important;padding:0 14px!important;margin:0!important;box-sizing:border-box!important;font-size:12px!important;white-space:nowrap!important}
+.dashboard-page .sidebar ul li a{
+ display:flex!important;align-items:center!important;justify-content:center!important;
+ width:auto!important;min-width:115px!important;height:52px!important;padding:0 14px!important;
+ margin:0!important;box-sizing:border-box!important;font-size:12px!important;white-space:nowrap!important
+}
 
-.dashboard-page .main-content{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:10px!important;box-sizing:border-box!important;overflow:hidden!important}
-.dashboard-page .topbar{width:100%!important;min-height:70px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;padding:14px!important;margin:0 0 10px!important;box-sizing:border-box!important}
-.dashboard-page .topbar h1{font-size:23px!important;margin:0!important;white-space:nowrap!important}
-.dashboard-page .topbar .user{max-width:55%!important;font-size:10px!important;text-align:right!important;word-break:break-word!important;overflow-wrap:anywhere!important}
+.dashboard-page .main-content{
+ position:relative!important;width:100%!important;max-width:100%!important;min-width:0!important;
+ margin:0!important;padding:10px!important;box-sizing:border-box!important;overflow:hidden!important
+}
+.dashboard-page .topbar{
+ width:100%!important;min-height:65px!important;display:flex!important;align-items:center!important;
+ justify-content:space-between!important;gap:8px!important;padding:12px 14px!important;
+ margin:0 0 10px!important;box-sizing:border-box!important
+}
+.dashboard-page .topbar h1{font-size:22px!important;margin:0!important;white-space:nowrap!important}
+.dashboard-page .topbar .user{
+ max-width:55%!important;font-size:10px!important;text-align:right!important;
+ word-break:break-word!important;overflow-wrap:anywhere!important
+}
 
-.dashboard-page .welcome{width:100%!important;margin:10px 0!important;padding:22px 18px!important;box-sizing:border-box!important;overflow:hidden!important}
+.dashboard-page .welcome{
+ width:100%!important;margin:10px 0!important;padding:22px 18px!important;
+ box-sizing:border-box!important;overflow:hidden!important
+}
 .dashboard-page .welcome h2{font-size:21px!important;line-height:1.3!important;margin:0 0 8px!important}
 .dashboard-page .welcome p{font-size:12px!important;line-height:1.5!important;margin:0!important}
 
-.dashboard-page .cards{width:100%!important;display:grid!important;grid-template-columns:1fr!important;gap:12px!important;box-sizing:border-box!important}
-.dashboard-page .card{width:100%!important;min-width:0!important;min-height:115px!important;padding:22px!important;box-sizing:border-box!important;overflow:hidden!important}
-.dashboard-page .card h3{font-size:15px!important;margin:0 0 8px!important}
-.dashboard-page .card h1{font-size:32px!important;margin:0!important}
+.dashboard-page .cards{
+ width:100%!important;display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;box-sizing:border-box!important
+}
+.dashboard-page .card{
+ width:100%!important;min-width:0!important;min-height:110px!important;
+ padding:18px 10px!important;box-sizing:border-box!important;overflow:hidden!important;text-align:center!important
+}
+.dashboard-page .card h3{font-size:13px!important;margin:0 0 8px!important}
+.dashboard-page .card h1{font-size:30px!important;margin:0!important}
 
-.dashboard-page .main-content>h2{font-size:21px!important;margin:18px 0 10px!important}
-.dashboard-page .main-content>table{display:block!important;width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;margin:0!important;box-sizing:border-box!important}
+.dashboard-page .main-content>h2{font-size:20px!important;margin:18px 0 10px!important}
+.dashboard-page .main-content>table{
+ display:block!important;width:100%!important;max-width:100%!important;
+ overflow-x:auto!important;overflow-y:hidden!important;margin:0!important;box-sizing:border-box!important
+}
 .dashboard-page table{min-width:700px!important;border-collapse:collapse!important}
 .dashboard-page table th,.dashboard-page table td{font-size:11px!important;padding:6px!important}
-.dashboard-page table img{width:50px!important;height:50px!important;max-width:50px!important;object-fit:cover!important;border-radius:10px!important}
+.dashboard-page table img{
+ width:50px!important;height:50px!important;max-width:50px!important;
+ object-fit:cover!important;border-radius:10px!important
+}
 .dashboard-page table td a{font-size:10px!important;white-space:nowrap!important}
 }
 
 @media(max-width:380px){
-.dashboard-page .sidebar .logo{padding:15px 10px!important}
+.dashboard-page .sidebar .logo{padding:15px 8px!important}
 .dashboard-page .sidebar .logo h2{font-size:21px!important}
 .dashboard-page .sidebar .logo p{font-size:10px!important}
-.dashboard-page .sidebar ul li a{min-width:105px!important;height:52px!important;padding:0 10px!important;font-size:11px!important}
+.dashboard-page .sidebar ul li a{
+ min-width:105px!important;height:50px!important;padding:0 10px!important;font-size:11px!important
+}
 .dashboard-page .main-content{padding:8px!important}
-.dashboard-page .topbar{padding:12px!important}
-.dashboard-page .topbar h1{font-size:21px!important}
-.dashboard-page .welcome{padding:20px 16px!important}
+.dashboard-page .topbar{padding:11px!important}
+.dashboard-page .topbar h1{font-size:20px!important}
+.dashboard-page .welcome{padding:20px 15px!important}
 .dashboard-page .welcome h2{font-size:19px!important}
-.dashboard-page .cards{gap:10px!important}
-.dashboard-page .card{min-height:105px!important;padding:20px!important}
+.dashboard-page .cards{gap:8px!important}
+.dashboard-page .card{min-height:100px!important;padding:16px 8px!important}
+.dashboard-page .card h3{font-size:12px!important}
+.dashboard-page .card h1{font-size:27px!important}
 }
 </style>
 </head>
@@ -60,85 +106,84 @@ body.dashboard-page{width:100%!important;min-width:0!important}
 <body class="dashboard-page">
 
 <div class="sidebar">
-    <div class="logo">
-        <h2>🌿 PlantCare Hub</h2>
-        <p>The Future of Smart Agriculture</p>
-    </div>
+<div class="logo">
+<h2>🌿 PlantCare Hub</h2>
+<p>The Future of Smart Agriculture</p>
+</div>
 
-    <ul>
-        <li><a href="/dashboard">🏠 Dashboard</a></li>
-        <li><a href="/addplant">🌱 Add Plant</a></li>
-        <li><a href="/plantlist">📋 Plant List</a></li>
-        <li><a href="/reminders">⏰ Water Reminder</a></li>
-        <li><a href="/fertilizer">🧪 Fertilizer</a></li>
-        <li><a href="/health">💚 Plant Health</a></li>
-        <li><a href="{{ url_for('ai') }}">🤖 PlantCare AI</a></li>
-        <li><a href="/categories">🌿 Categories</a></li>
-        <li><a href="/report">📄 Plant Reports</a></li>
-        <li><a href="/profile">👤 Profile</a></li>
+<ul>
+<li><a href="/dashboard">🏠 Dashboard</a></li>
+<li><a href="/addplant">🌱 Add Plant</a></li>
+<li><a href="/plantlist">📋 Plant List</a></li>
+<li><a href="/reminders">⏰ Water Reminder</a></li>
+<li><a href="/fertilizer">🧪 Fertilizer</a></li>
+<li><a href="/health">💚 Plant Health</a></li>
+<li><a href="{{ url_for('ai') }}">🤖 PlantCare AI</a></li>
+<li><a href="/categories">🌿 Categories</a></li>
+<li><a href="/report">📄 Plant Reports</a></li>
+<li><a href="/profile">👤 Profile</a></li>
 
-        {% if session.get("user")|lower == ADMIN_EMAIL|lower %}
-        <li><a href="/admin">🛡️ Admin Panel</a></li>
-        {% endif %}
+{% if session.get("user")|lower == ADMIN_EMAIL|lower %}
+<li><a href="/admin">🛡️ Admin Panel</a></li>
+{% endif %}
 
-        <li><a href="/about">ℹ️ About</a></li>
-        <li><a href="/logout">🚪 Logout</a></li>
-    </ul>
+<li><a href="/about">ℹ️ About</a></li>
+<li><a href="/logout">🚪 Logout</a></li>
+</ul>
 </div>
 
 <div class="main-content">
 
-    <div class="topbar">
-        <h1>Dashboard</h1>
-        <div class="user">👤 {{ session["user"] }}</div>
-    </div>
+<div class="topbar">
+<h1>Dashboard</h1>
+<div class="user">👤 {{ session["user"] }}</div>
+</div>
 
-    <div class="welcome">
-        <h2>Welcome To PlantCare Hub</h2>
-        <p>Smart Agriculture & Plant Information System</p>
-    </div>
+<div class="welcome">
+<h2>Welcome To PlantCare Hub</h2>
+<p>Smart Agriculture & Plant Information System</p>
+</div>
 
-    <div class="cards">
-        <div class="card"><h3>Total Plants</h3><h1>{{ total_plants }}</h1></div>
-        <div class="card"><h3>Healthy Plants</h3><h1>{{ healthy }}</h1></div>
-        <div class="card"><h3>Need Water</h3><h1>{{ need_water }}</h1></div>
-        <div class="card"><h3>Need Fertilizer</h3><h1>{{ need_fertilizer }}</h1></div>
-    </div>
+<div class="cards">
+<div class="card"><h3>Total Plants</h3><h1>{{ total_plants }}</h1></div>
+<div class="card"><h3>Healthy Plants</h3><h1>{{ healthy }}</h1></div>
+<div class="card"><h3>Need Water</h3><h1>{{ need_water }}</h1></div>
+<div class="card"><h3>Need Fertilizer</h3><h1>{{ need_fertilizer }}</h1></div>
+</div>
 
-    <h2>Recent Plants</h2>
+<h2>Recent Plants</h2>
 
-    <table>
-        <tr>
-            <th>Image</th>
-            <th>Plant Name</th>
-            <th>Scientific Name</th>
-            <th>Water</th>
-            <th>Sunlight</th>
-            <th>Category</th>
-            <th>Health</th>
-            <th>Action</th>
-        </tr>
+<table>
+<tr>
+<th>Image</th>
+<th>Plant Name</th>
+<th>Scientific Name</th>
+<th>Water</th>
+<th>Sunlight</th>
+<th>Category</th>
+<th>Health</th>
+<th>Action</th>
+</tr>
 
-        {% for plant in plants %}
-        <tr>
-            <td>
-                <img src="{{ url_for('static',filename='uploads/' + plant[6]) }}"
-                     width="70" height="70"
-                     style="border-radius:10px;object-fit:cover;">
-            </td>
-            <td>{{ plant[1] }}</td>
-            <td>{{ plant[2] }}</td>
-            <td>{{ plant[3] }}</td>
-            <td>{{ plant[4] }}</td>
-            <td>{{ plant[8] }}</td>
-            <td>{{ plant[11] }}</td>
-            <td>
-                <a href="/edit/{{ plant[0] }}">✏ Edit</a> |
-                <a href="/delete/{{ plant[0] }}">🗑 Delete</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
+{% for plant in plants %}
+<tr>
+<td>
+<img src="{{ url_for('static',filename='uploads/' + plant[6]) }}"
+width="70" height="70" style="border-radius:10px;object-fit:cover;">
+</td>
+<td>{{ plant[1] }}</td>
+<td>{{ plant[2] }}</td>
+<td>{{ plant[3] }}</td>
+<td>{{ plant[4] }}</td>
+<td>{{ plant[8] }}</td>
+<td>{{ plant[11] }}</td>
+<td>
+<a href="/edit/{{ plant[0] }}">✏ Edit</a> |
+<a href="/delete/{{ plant[0] }}">🗑 Delete</a>
+</td>
+</tr>
+{% endfor %}
+</table>
 
 </div>
 </body>
