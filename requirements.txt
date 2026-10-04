@@ -5,3 +5,4 @@ google-genai
 Werkzeug
 reportlab
 requests
+psycopg2-binary

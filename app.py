@@ -2,7 +2,9 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 
 
 
-import sqlite3
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import os
 import smtplib
 import secrets
@@ -23,6 +25,9 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 load_dotenv()
 
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
@@ -35,12 +40,12 @@ print(
 
 
 def create_database():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS plants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT,
         scientific_name TEXT,
         water TEXT,
@@ -57,16 +62,9 @@ def create_database():
     )
     """)
 
-    try:
-        cursor.execute(
-            "ALTER TABLE plants ADD COLUMN owner_email TEXT"
-        )
-    except sqlite3.OperationalError:
-        pass
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         fullname TEXT,
         email TEXT UNIQUE,
         username TEXT,
@@ -502,11 +500,11 @@ def login():
             ""
         )
 
-        conn = sqlite3.connect("database.db")
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT * FROM users WHERE email=? AND password=?",
+            "SELECT * FROM users WHERE email=%s AND password=%s",
             (email, password)
         )
 
@@ -622,11 +620,11 @@ def forgot_password():
             ""
         ).strip()
 
-        conn = sqlite3.connect("database.db")
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT id FROM users WHERE email=?",
+            "SELECT id FROM users WHERE email=%s",
             (email,)
         )
 
@@ -831,14 +829,14 @@ def reset_password():
             error="Passwords do not match."
         )
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(
         """
         UPDATE users
-        SET password=?
-        WHERE email=?
+        SET password=%s
+        WHERE email=%s
         """,
         (
             new_password,
@@ -871,12 +869,12 @@ def register():
         username = request.form["username"]
         password = request.form["password"]
 
-        conn = sqlite3.connect("database.db")
+        conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
 
         # Check duplicate email/username
         cur.execute(
-    "SELECT * FROM users WHERE email=?",
+    "SELECT * FROM users WHERE email=%s",
     (email,))
 
         if cur.fetchone():
@@ -887,7 +885,7 @@ def register():
             )
 
         cur.execute(
-            "INSERT INTO users (fullname,email,username,password) VALUES (?,?,?,?)",
+            "INSERT INTO users (fullname,email,username,password) VALUES (%s,%s,%s,%s)",
             (fullname, email, username, password)
         )
 
@@ -908,14 +906,14 @@ def dashboard():
     email = session["user"]
     today = date.today().isoformat()
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     # ================= TOTAL PLANTS =================
     cursor.execute("""
         SELECT COUNT(*)
         FROM plants
-        WHERE owner_email=?
+        WHERE owner_email=%s
     """, (email,))
     total_plants = cursor.fetchone()[0]
 
@@ -923,8 +921,8 @@ def dashboard():
     cursor.execute("""
         SELECT COUNT(*)
         FROM plants
-        WHERE owner_email=?
-        AND watering_date < ?
+        WHERE owner_email=%s
+        AND watering_date < %s
         AND reminder_status != 'Completed'
     """, (email, today))
     need_water = cursor.fetchone()[0]
@@ -933,8 +931,8 @@ def dashboard():
     cursor.execute("""
         SELECT COUNT(*)
         FROM plants
-        WHERE owner_email=?
-        AND fertilizer_date < ?
+        WHERE owner_email=%s
+        AND fertilizer_date < %s
         AND fertilizer_status != 'Completed'
     """, (email, today))
     need_fertilizer = cursor.fetchone()[0]
@@ -945,13 +943,13 @@ def dashboard():
     cursor.execute("""
         SELECT COUNT(*)
         FROM plants
-        WHERE owner_email=?
+        WHERE owner_email=%s
         AND (
-            watering_date >= ?
+            watering_date >= %s
             OR reminder_status = 'Completed'
         )
         AND (
-            fertilizer_date >= ?
+            fertilizer_date >= %s
             OR fertilizer_status = 'Completed'
         )
     """, (email, today, today))
@@ -962,7 +960,7 @@ def dashboard():
     cursor.execute("""
         SELECT *
         FROM plants
-        WHERE owner_email=?
+        WHERE owner_email=%s
         ORDER BY id DESC
         LIMIT 5
     """, (email,))
@@ -994,7 +992,7 @@ def addplant():
 
         image.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
-        conn = sqlite3.connect("database.db")
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -1014,7 +1012,7 @@ def addplant():
         reminder_status,
         fertilizer_status
     )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             request.form["name"],
             request.form["scientific_name"],
@@ -1046,14 +1044,14 @@ def plantlist():
 
     search = request.args.get("search", "")
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     if search:
         cursor.execute(
             """
             SELECT * FROM plants
-            WHERE owner_email=? AND name LIKE ?
+            WHERE owner_email=%s AND name LIKE %s
             ORDER BY id DESC
             """,
             (session["user"], '%' + search + '%')
@@ -1062,7 +1060,7 @@ def plantlist():
         cursor.execute(
             """
             SELECT * FROM plants
-            WHERE owner_email=?
+            WHERE owner_email=%s
             ORDER BY id DESC
             """,
             (session["user"],)
@@ -1083,11 +1081,11 @@ def delete(id):
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(
-        "DELETE FROM plants WHERE id=? AND owner_email=?",
+        "DELETE FROM plants WHERE id=%s AND owner_email=%s",
         (id, session["user"])
     )
 
@@ -1102,12 +1100,12 @@ def edit(id):
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     # Check that this plant belongs to the logged-in user
     cursor.execute(
-        "SELECT * FROM plants WHERE id=? AND owner_email=?",
+        "SELECT * FROM plants WHERE id=%s AND owner_email=%s",
         (id, session["user"])
     )
 
@@ -1122,18 +1120,18 @@ def edit(id):
         cursor.execute("""
         UPDATE plants
         SET
-            name=?,
-            scientific_name=?,
-            water=?,
-            sunlight=?,
-            soil=?,
-            category=?,
-            watering_date=?,
-            fertilizer_date=?,
-            health_status=?,
+            name=%s,
+            scientific_name=%s,
+            water=%s,
+            sunlight=%s,
+            soil=%s,
+            category=%s,
+            watering_date=%s,
+            fertilizer_date=%s,
+            health_status=%s,
             reminder_status='Pending',
             fertilizer_status='Pending'
-        WHERE id=? AND owner_email=?
+        WHERE id=%s AND owner_email=%s
         """, (
 
             request.form["name"],
@@ -1175,12 +1173,11 @@ def reminders():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=?",
+        "SELECT * FROM plants WHERE owner_email=%s",
         (session["user"],)
     )
 
@@ -1223,12 +1220,11 @@ def fertilizer():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=?",
+        "SELECT * FROM plants WHERE owner_email=%s",
         (session["user"],)
     )
 
@@ -1273,12 +1269,10 @@ def health():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=?",
+        "SELECT * FROM plants WHERE owner_email=%s",
         (session["user"],)
     )
 
@@ -1318,8 +1312,8 @@ def health():
 
         cursor.execute("""
             UPDATE plants
-            SET health_status=?
-            WHERE id=? AND owner_email=?
+            SET health_status=%s
+            WHERE id=%s AND owner_email=%s
         """, (
             status,
             plant["id"],
@@ -1346,14 +1340,13 @@ def categories():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     cursor.execute("""
         SELECT category, COUNT(*) as total
         FROM plants
-        WHERE owner_email=?
+        WHERE owner_email=%s
         GROUP BY category
     """, (
         session["user"],
@@ -1375,13 +1368,13 @@ def complete_reminder(id):
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE plants
         SET reminder_status='Completed'
-        WHERE id=? AND owner_email=?
+        WHERE id=%s AND owner_email=%s
     """, (
         id,
         session["user"]
@@ -1399,13 +1392,13 @@ def complete_fertilizer(id):
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE plants
         SET fertilizer_status='Completed'
-        WHERE id=? AND owner_email=?
+        WHERE id=%s AND owner_email=%s
     """, (
         id,
         session["user"]
@@ -1423,14 +1416,12 @@ def category_plants(category):
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute(
         """
         SELECT * FROM plants
-        WHERE category=? AND owner_email=?
+        WHERE category=%s AND owner_email=%s
         """,
         (
             category,
@@ -1454,12 +1445,14 @@ def profile():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+    DATABASE_URL,
+    cursor_factory=psycopg2.extras.RealDictCursor
+    )
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM users WHERE email=?",
+        "SELECT * FROM users WHERE email=%s",
         (session["user"],)
     )
 
@@ -1475,8 +1468,10 @@ def edit_profile():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+    DATABASE_URL,
+    cursor_factory=psycopg2.extras.RealDictCursor
+    )
     cursor = conn.cursor()
 
     if request.method == "POST":
@@ -1487,8 +1482,8 @@ def edit_profile():
 
         cursor.execute("""
         UPDATE users
-        SET fullname=?, username=?, password=?
-        WHERE email=?
+        SET fullname=%s, username=%s, password=%s
+        WHERE email=%s
         """, (
             fullname,
             username,
@@ -1502,7 +1497,7 @@ def edit_profile():
         return redirect("/profile")
 
     cursor.execute(
-        "SELECT * FROM users WHERE email=?",
+        "SELECT * FROM users WHERE email=%s",
         (session["user"],)
     )
 
@@ -1561,46 +1556,72 @@ def create_pdf(plants,title):
 
 @app.route("/download-report/<report_type>")
 def download_report(report_type):
+
     if "user" not in session:
         return redirect("/login")
 
     if report_type not in ["all", "water", "fertilizer"]:
         return redirect("/report")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
+
+    cursor = conn.cursor()
     today = date.today().isoformat()
 
+    # ================= ALL PLANTS =================
+
     if report_type == "all":
+
         title = "All Plants Report"
         filename = "PlantCare_Hub_All_Plants_Report.pdf"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
             ORDER BY id DESC
-        """, (session["user"],)).fetchall()
+        """, (session["user"],))
+
+        plants = cursor.fetchall()
+
+    # ================= WATER REPORT =================
 
     elif report_type == "water":
+
         title = "Need Water Report"
         filename = "PlantCare_Hub_Need_Water_Report.pdf"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
-            AND watering_date < ?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
+            AND watering_date < %s
             AND reminder_status != 'Completed'
             ORDER BY watering_date
-        """, (session["user"], today)).fetchall()
+        """, (session["user"], today))
+
+        plants = cursor.fetchall()
+
+    # ================= FERTILIZER REPORT =================
 
     else:
+
         title = "Need Fertilizer Report"
         filename = "PlantCare_Hub_Need_Fertilizer_Report.pdf"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
-            AND fertilizer_date < ?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
+            AND fertilizer_date < %s
             AND fertilizer_status != 'Completed'
             ORDER BY fertilizer_date
-        """, (session["user"], today)).fetchall()
+        """, (session["user"], today))
+
+        plants = cursor.fetchall()
 
     conn.close()
 
@@ -1615,43 +1636,70 @@ def download_report(report_type):
 
 @app.route("/report-view/<report_type>")
 def report_view(report_type):
+
     if "user" not in session:
         return redirect("/login")
 
     if report_type not in ["all", "water", "fertilizer"]:
         return redirect("/report")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
+
+    cursor = conn.cursor()
+
     today = date.today().isoformat()
 
+    # ================= ALL PLANTS =================
+
     if report_type == "all":
+
         title = "🌿 All Plants Report"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
             ORDER BY id DESC
-        """, (session["user"],)).fetchall()
+        """, (session["user"],))
+
+        plants = cursor.fetchall()
+
+    # ================= WATER REPORT =================
 
     elif report_type == "water":
+
         title = "💧 Need Water Report"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
-            AND watering_date < ?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
+            AND watering_date < %s
             AND reminder_status != 'Completed'
             ORDER BY watering_date
-        """, (session["user"], today)).fetchall()
+        """, (session["user"], today))
+
+        plants = cursor.fetchall()
+
+    # ================= FERTILIZER REPORT =================
 
     else:
+
         title = "🌱 Need Fertilizer Report"
-        plants = conn.execute("""
-            SELECT * FROM plants
-            WHERE owner_email=?
-            AND fertilizer_date < ?
+
+        cursor.execute("""
+            SELECT *
+            FROM plants
+            WHERE owner_email = %s
+            AND fertilizer_date < %s
             AND fertilizer_status != 'Completed'
             ORDER BY fertilizer_date
-        """, (session["user"], today)).fetchall()
+        """, (session["user"], today))
+
+        plants = cursor.fetchall()
 
     conn.close()
 
@@ -1671,14 +1719,16 @@ def report():
     if "user" not in session:
         return redirect("/login")
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+    DATABASE_URL,
+    cursor_factory=psycopg2.extras.RealDictCursor
+    )
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT *
         FROM plants
-        WHERE owner_email=?
+        WHERE owner_email=%s
         ORDER BY id DESC
     """, (session["user"],))
 
@@ -1705,31 +1755,46 @@ def admin():
     if access:
         return access
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
+
+    cursor = conn.cursor()
 
     # Users
-    users = conn.execute("""
+    cursor.execute("""
         SELECT id, fullname, email, username
         FROM users
         ORDER BY id DESC
-    """).fetchall()
+    """)
+
+    users = cursor.fetchall()
 
     # Plants
-    plants = conn.execute("""
+    cursor.execute("""
         SELECT id, name, scientific_name, water, sunlight, soil
         FROM plants
         ORDER BY id DESC
-    """).fetchall()
+    """)
 
-    # Counts
-    total_users = conn.execute(
-        "SELECT COUNT(*) FROM users"
-    ).fetchone()[0]
+    plants = cursor.fetchall()
 
-    total_plants = conn.execute(
-        "SELECT COUNT(*) FROM plants"
-    ).fetchone()[0]
+    # Total Users
+    cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM users
+    """)
+
+    total_users = cursor.fetchone()["count"]
+
+    # Total Plants
+    cursor.execute("""
+        SELECT COUNT(*) AS count
+        FROM plants
+    """)
+
+    total_plants = cursor.fetchone()["count"]
 
     conn.close()
 
