@@ -30,7 +30,9 @@ padding:0!important;box-sizing:border-box!important;overflow-x:auto!important;ov
 white-space:nowrap!important;scrollbar-width:none!important;-webkit-overflow-scrolling:touch!important
 }
 .dashboard-page .sidebar ul::-webkit-scrollbar{display:none!important}
-.dashboard-page .sidebar ul li{flex:0 0 auto!important;width:auto!important;min-width:auto!important;margin:0!important;padding:0!important}
+.dashboard-page .sidebar ul li{
+flex:0 0 auto!important;width:auto!important;min-width:auto!important;margin:0!important;padding:0!important
+}
 .dashboard-page .sidebar ul li a{
 display:flex!important;align-items:center!important;justify-content:center!important;width:auto!important;
 min-width:120px!important;height:52px!important;padding:0 15px!important;margin:0!important;
@@ -71,19 +73,29 @@ box-sizing:border-box!important;overflow:hidden!important;text-align:center!impo
 .dashboard-page .card h3{font-size:13px!important;line-height:1.2!important;margin:0 0 8px!important}
 .dashboard-page .card h1{font-size:30px!important;margin:0!important}
 
-.dashboard-page .main-content>h2{font-size:20px!important;line-height:1.3!important;margin:18px 0 10px!important}
-.dashboard-page .main-content>table{
-display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;
-overflow-y:hidden!important;margin:0!important;box-sizing:border-box!important;
--webkit-overflow-scrolling:touch!important
+.dashboard-page .main-content>h2{
+font-size:20px!important;line-height:1.3!important;margin:18px 0 10px!important
 }
-.dashboard-page table{min-width:700px!important;border-collapse:collapse!important}
-.dashboard-page table th,.dashboard-page table td{font-size:11px!important;padding:6px!important;white-space:nowrap!important}
-.dashboard-page table img{
+
+.dashboard-page .table-wrapper{
+width:100%!important;max-width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;
+-webkit-overflow-scrolling:touch!important;display:block!important;box-sizing:border-box!important;
+border-radius:8px!important;margin:0!important;padding:0!important
+}
+.dashboard-page .table-wrapper table{
+width:max-content!important;min-width:850px!important;max-width:none!important;
+border-collapse:collapse!important;table-layout:auto!important;margin:0!important
+}
+.dashboard-page .table-wrapper table th,
+.dashboard-page .table-wrapper table td{
+font-size:11px!important;padding:8px!important;white-space:nowrap!important;vertical-align:middle!important
+}
+.dashboard-page .table-wrapper table th{height:40px!important}
+.dashboard-page .table-wrapper table img{
 width:50px!important;height:50px!important;max-width:50px!important;
-object-fit:cover!important;border-radius:10px!important
+object-fit:cover!important;border-radius:10px!important;display:block!important
 }
-.dashboard-page table td a{font-size:10px!important;white-space:nowrap!important}
+.dashboard-page .table-wrapper table td a{font-size:10px!important;white-space:nowrap!important}
 }
 
 @media(max-width:480px){
@@ -100,6 +112,9 @@ object-fit:cover!important;border-radius:10px!important
 .dashboard-page .card{min-height:100px!important;padding:16px 8px!important}
 .dashboard-page .card h3{font-size:12px!important}
 .dashboard-page .card h1{font-size:27px!important}
+.dashboard-page .main-content>h2{font-size:19px!important;margin:16px 0 9px!important}
+.dashboard-page .table-wrapper{width:100%!important;overflow-x:auto!important}
+.dashboard-page .table-wrapper table{min-width:850px!important}
 }
 
 @media(max-width:360px){
@@ -108,6 +123,7 @@ object-fit:cover!important;border-radius:10px!important
 .dashboard-page .welcome h2{font-size:18px!important}
 .dashboard-page .card h3{font-size:11px!important}
 .dashboard-page .card h1{font-size:25px!important}
+.dashboard-page .table-wrapper table{min-width:850px!important}
 }
 </style>
 </head>
@@ -154,18 +170,40 @@ object-fit:cover!important;border-radius:10px!important
 </div>
 
 <div class="cards">
-<div class="card"><h3>Total Plants</h3><h1>{{ total_plants }}</h1></div>
-<div class="card"><h3>Healthy Plants</h3><h1>{{ healthy }}</h1></div>
-<div class="card"><h3>Need Water</h3><h1>{{ need_water }}</h1></div>
-<div class="card"><h3>Need Fertilizer</h3><h1>{{ need_fertilizer }}</h1></div>
+<div class="card">
+<h3>Total Plants</h3>
+<h1>{{ total_plants }}</h1>
+</div>
+
+<div class="card">
+<h3>Healthy Plants</h3>
+<h1>{{ healthy }}</h1>
+</div>
+
+<div class="card">
+<h3>Need Water</h3>
+<h1>{{ need_water }}</h1>
+</div>
+
+<div class="card">
+<h3>Need Fertilizer</h3>
+<h1>{{ need_fertilizer }}</h1>
+</div>
 </div>
 
 <h2>Recent Plants</h2>
 
+<div class="table-wrapper">
 <table>
 <tr>
-<th>Image</th><th>Plant Name</th><th>Scientific Name</th><th>Water</th>
-<th>Sunlight</th><th>Category</th><th>Health</th><th>Action</th>
+<th>Image</th>
+<th>Plant Name</th>
+<th>Scientific Name</th>
+<th>Water</th>
+<th>Sunlight</th>
+<th>Category</th>
+<th>Health</th>
+<th>Action</th>
 </tr>
 
 {% for plant in plants %}
@@ -187,6 +225,7 @@ width="70" height="70" style="border-radius:10px;object-fit:cover;">
 </tr>
 {% endfor %}
 </table>
+</div>
 
 </div>
 </body>
