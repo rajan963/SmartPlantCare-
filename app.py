@@ -575,13 +575,18 @@ def login():
 # =========================================================
 
 def send_forgot_password_otp_email(receiver_email, otp):
-    msg = EmailMessage()
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    resend_from_email = os.getenv("RESEND_FROM_EMAIL")
 
-    msg["Subject"] = "PlantCare Hub - Password Reset OTP"
-    msg["From"] = GMAIL_SENDER
-    msg["To"] = receiver_email
+    if not resend_api_key:
+        raise Exception("RESEND_API_KEY is not configured")
 
-    msg.set_content(f"""
+    if not resend_from_email:
+        raise Exception("RESEND_FROM_EMAIL is not configured")
+
+    subject = "PlantCare Hub - Password Reset OTP"
+
+    body = f"""
 Hello,
 
 Your PlantCare Hub password reset OTP is:
@@ -593,17 +598,27 @@ This OTP is valid for {OTP_EXPIRY_MINUTES} minutes.
 If you did not request a password reset, please ignore this email.
 
 PlantCare Hub
-""")
+"""
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {resend_api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "from": resend_from_email,
+            "to": [receiver_email],
+            "subject": subject,
+            "text": body
+        },
+        timeout=20
+    )
 
-        server.login(
-            GMAIL_SENDER,
-            GMAIL_APP_PASSWORD.replace(" ", "")
+    if response.status_code >= 400:
+        raise Exception(
+            f"Resend email failed: {response.status_code} - {response.text}"
         )
-
-        server.send_message(msg)
 
 
 # =========================================================
