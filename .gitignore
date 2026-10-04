@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 database.db 
+database - Copy.db
+database_backup.db
