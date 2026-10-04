@@ -2,8 +2,149 @@
 <html>
 <head>
 <title>PlantCare Hub Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+
+<style>
+
+
+@media (max-width: 600px){
+
+    body.dashboard-page{
+        width:100%;
+        min-width:0;
+        overflow-x:hidden;
+    }
+    .dashboard-page .sidebar{
+        width:100% !important;
+        position:relative !important;
+        left:0 !important;
+        top:0 !important;
+        margin:0 !important;
+        padding:0 !important;
+    }
+
+    .dashboard-page .sidebar .logo{
+        width:100%;
+        text-align:center;
+    }
+
+    .dashboard-page .sidebar ul{
+        width:100%;
+        display:flex !important;
+        flex-direction:row !important;
+        flex-wrap:wrap !important;
+        justify-content:center;
+        align-items:center;
+        margin:0 !important;
+        padding:5px !important;
+        gap:4px;
+    }
+
+    .dashboard-page .sidebar ul li{
+        display:block !important;
+        width:auto !important;
+        margin:0 !important;
+        padding:0 !important;
+    }
+
+    .dashboard-page .sidebar ul li a{
+        display:block !important;
+        width:auto !important;
+        padding:7px 9px !important;
+        margin:2px !important;
+        font-size:12px !important;
+        white-space:nowrap;
+    }
+    .dashboard-page .main-content{
+        width:100% !important;
+        max-width:100% !important;
+        margin-left:0 !important;
+        padding:10px !important;
+        box-sizing:border-box;
+    }
+    .dashboard-page .topbar{
+        width:100% !important;
+        box-sizing:border-box;
+        display:flex;
+        flex-direction:row !important;
+        justify-content:space-between;
+        align-items:center;
+        gap:8px;
+        padding:12px !important;
+    }
+
+    .dashboard-page .topbar h1{
+        font-size:22px !important;
+        margin:0;
+    }
+
+    .dashboard-page .topbar .user{
+        font-size:11px !important;
+        text-align:right;
+        word-break:break-word;
+    }
+    .dashboard-page .welcome{
+        width:100% !important;
+        box-sizing:border-box;
+        margin:10px 0 !important;
+    }
+
+    .dashboard-page .welcome h2{
+        font-size:21px !important;
+    }
+
+    .dashboard-page .welcome p{
+        font-size:12px !important;
+    }
+    .dashboard-page .cards{
+        width:100% !important;
+        display:grid !important;
+        grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+        gap:10px !important;
+    }
+
+    .dashboard-page .card{
+        width:100% !important;
+        min-width:0 !important;
+        box-sizing:border-box;
+    }
+
+    .dashboard-page .card h3{
+        font-size:14px !important;
+    }
+
+    .dashboard-page .card h1{
+        font-size:28px !important;
+    }
+    .dashboard-page .main-content > h2{
+        font-size:20px !important;
+        margin:12px 0 8px !important;
+    }
+    .dashboard-page .main-content > table{
+        display:block !important;
+        width:100% !important;
+        max-width:100% !important;
+        overflow-x:auto !important;
+        box-sizing:border-box;
+        white-space:normal;
+    }
+
+    .dashboard-page table th,
+    .dashboard-page table td{
+        font-size:11px !important;
+        padding:6px !important;
+    }
+
+    .dashboard-page table img{
+        width:50px !important;
+        height:50px !important;
+    }
+
+}
+</style>
 </head>
+
 <body class="dashboard-page">
 
 <div class="sidebar">
