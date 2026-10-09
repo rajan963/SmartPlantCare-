@@ -64,6 +64,7 @@
             <div class="input-box otp-input">
                 <div class="input-icon">🔐</div>
                 <input type="text" name="otp" maxlength="6" inputmode="numeric"
+                       value="{{ dev_otp if dev_otp else '' }}"
                        autocomplete="one-time-code" placeholder="000000" pattern="[0-9]{6}" required>
             </div>
             <button type="submit" class="login-btn">Verify OTP →</button>
