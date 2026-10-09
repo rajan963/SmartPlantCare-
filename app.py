@@ -1,755 +1,1167 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
-
-
-
-
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import os
-import smtplib
+import re
+import sqlite3
+import random
+import string
+import csv
+import io
 import secrets
 import hashlib
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from datetime import datetime, timedelta, date
+from decimal import Decimal
+from functools import wraps
 import requests
-
-from io import BytesIO
-from flask import send_file
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-
-
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    make_response
+)
 from werkzeug.utils import secure_filename
-from datetime import date, datetime, timedelta
-from email.message import EmailMessage
-
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
+
 load_dotenv()
 
+app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "plantcare-hub-secret-key-2026-plants")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db")
+BACKUP_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database_backup.db")
+UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "avif"}
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "rajankumar01331@gmail.com").strip().lower()
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+# Email Delivery Configuration (Resend API & Gmail SMTP)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev").strip()
+GMAIL_SENDER = os.getenv("GMAIL_SENDER", "").strip()
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
+OTP_EXPIRY_MINUTES = 5
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-
-print("OpenRouter key loaded:", bool(OPENROUTER_API_KEY))
-print(
-    "OpenRouter key length:",
-    len(OPENROUTER_API_KEY) if OPENROUTER_API_KEY else 0
-)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
-def create_database():
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+# ==============================================================================
+# POSTGRESQL COMPATIBILITY WRAPPER (FOR RENDER PERSISTENT STORAGE)
+# ==============================================================================
+class PostgresRow(dict):
+    """
+    Transparent dict-like and index-accessible row wrapper matching sqlite3.Row.
+    Converts Decimal to float and datetime/date to formatted string
+    for full compatibility with Jinja2 templates and numerical calculations.
+    """
+    def __init__(self, description, row_tuple):
+        super().__init__()
+        conv_list = []
+        if description and row_tuple:
+            for col, val in zip(description, row_tuple):
+                if isinstance(val, Decimal):
+                    val = float(val)
+                elif isinstance(val, (datetime, date)):
+                    val = val.strftime("%Y-%m-%d %H:%M:%S")
+                conv_list.append(val)
+                self[col.name.lower()] = val
+        self._tuple = tuple(conv_list)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS plants (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        scientific_name TEXT,
-        water TEXT,
-        sunlight TEXT,
-        soil TEXT,
-        image TEXT,
-        owner_email TEXT,
-        category TEXT,
-        watering_date TEXT,
-        fertilizer_date TEXT,
-        health_status TEXT DEFAULT 'Healthy',
-        reminder_status TEXT DEFAULT 'upcoming',
-        fertilizer_status TEXT DEFAULT 'upcoming'
-    )
-    """)
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self._tuple[item]
+        if isinstance(item, str):
+            return super().__getitem__(item.lower())
+        return super().__getitem__(item)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        fullname TEXT,
-        email TEXT UNIQUE,
-        username TEXT,
-        password TEXT
-    )
-    """)
+    def get(self, item, default=None):
+        if isinstance(item, int):
+            try:
+                return self._tuple[item]
+            except IndexError:
+                return default
+        if isinstance(item, str):
+            return super().get(item.lower(), default)
+        return super().get(item, default)
+
+    def __contains__(self, item):
+        if isinstance(item, str):
+            return super().__contains__(item.lower())
+        return super().__contains__(item)
+
+
+class PostgresCursorWrapper:
+    """
+    Wraps psycopg2 cursor to mirror sqlite3 cursor semantics:
+    1. Returns self from execute() so cur.execute(...).fetchone() / .fetchall() works seamlessly.
+    2. Converts ? parameter placeholders to %s.
+    3. Converts SQLite scalar MAX(0, ...) to PostgreSQL GREATEST(0, ...).
+    4. Converts SUBSTR(col.created_at, ...) to SUBSTR(col.created_at::text, ...).
+    5. Converts INTEGER PRIMARY KEY AUTOINCREMENT to SERIAL PRIMARY KEY in DDL.
+    6. Automatically appends RETURNING id on INSERT to populate cur.lastrowid.
+    7. Safely handles/ignores SQLite PRAGMA statements.
+    """
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+        self._cur = pg_conn.cursor()
+        self.lastrowid = None
+        self._description = None
+
+    @property
+    def description(self):
+        return self._cur.description
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    def _convert_query(self, query):
+        q = query
+        # 1. Skip SQLite PRAGMA commands
+        if q.strip().upper().startswith("PRAGMA"):
+            return "PRAGMA"
+        # 2. Convert SQLite DDL AUTOINCREMENT to SERIAL PRIMARY KEY
+        q = re.sub(r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT', 'SERIAL PRIMARY KEY', q, flags=re.IGNORECASE)
+        # 3. Convert SQLite scalar MAX(0, ...) to PostgreSQL GREATEST(0, ...)
+        q = re.sub(r'\bMAX\s*\(\s*0\s*,', 'GREATEST(0,', q, flags=re.IGNORECASE)
+        # 4. Cast timestamp to text for SUBSTR
+        q = re.sub(r'\bSUBSTR\s*\(\s*([a-zA-Z0-9_]+\.created_at|created_at)\s*,', r'SUBSTR(\1::text,', q, flags=re.IGNORECASE)
+        # 5. Convert ? placeholders to %s
+        q = q.replace('?', '%s')
+        return q
+
+    def execute(self, query, params=None):
+        clean_q = self._convert_query(query)
+        if clean_q == "PRAGMA":
+            return self
+
+        is_insert = bool(re.search(r'^\s*INSERT\s+INTO\s+', clean_q, re.IGNORECASE))
+        has_returning = 'RETURNING' in clean_q.upper()
+
+        if is_insert and not has_returning:
+            q_returning = f"{clean_q.rstrip().rstrip(';')} RETURNING id"
+            try:
+                formatted_params = tuple(params) if isinstance(params, (list, tuple)) else params
+                if formatted_params is not None:
+                    self._cur.execute(q_returning, formatted_params)
+                else:
+                    self._cur.execute(q_returning)
+                row = self._cur.fetchone()
+                self.lastrowid = row[0] if row else None
+                self._description = self._cur.description
+                return self
+            except psycopg2.Error as err:
+                if "id" in str(err).lower() and "does not exist" in str(err).lower():
+                    self._conn.rollback()
+                else:
+                    raise
+
+        formatted_params = tuple(params) if isinstance(params, (list, tuple)) else params
+        if formatted_params is not None:
+            self._cur.execute(clean_q, formatted_params)
+        else:
+            self._cur.execute(clean_q)
+        self._description = self._cur.description
+        return self
+
+    def executemany(self, query, seq_of_params):
+        clean_q = self._convert_query(query)
+        if clean_q == "PRAGMA":
+            return self
+        self._cur.executemany(clean_q, seq_of_params)
+        self._description = self._cur.description
+        return self
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        return PostgresRow(self._cur.description, row)
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        desc = self._cur.description
+        return [PostgresRow(desc, r) for r in rows]
+
+    def fetchmany(self, size=None):
+        rows = self._cur.fetchmany(size) if size else self._cur.fetchmany()
+        desc = self._cur.description
+        return [PostgresRow(desc, r) for r in rows]
+
+    def close(self):
+        try:
+            self._cur.close()
+        except Exception:
+            pass
+
+
+class PostgresConnectionWrapper:
+    """
+    Wraps psycopg2 connection to mirror sqlite3 connection semantics.
+    Supports execute(), commit(), rollback(), close(), and context management.
+    """
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+        self.row_factory = None
+
+    def cursor(self):
+        return PostgresCursorWrapper(self._conn)
+
+    def execute(self, query, params=None):
+        cur = self.cursor()
+        return cur.execute(query, params)
+
+    def executemany(self, query, seq_of_params):
+        cur = self.cursor()
+        return cur.executemany(query, seq_of_params)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+
+
+# ==============================================================================
+# DATABASE CONNECTION & INITIALIZATION
+# ==============================================================================
+def get_db():
+    """
+    Returns database connection:
+    - If DATABASE_URL or DATABASE_URL_EXTERNAL is present, connects to PostgreSQL
+      on Render for permanent, persistent data storage.
+    - Otherwise (or if PostgreSQL is unreachable), falls back to SQLite database.db.
+    """
+    db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_EXTERNAL")
+    if db_url and psycopg2:
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            pg_conn = psycopg2.connect(db_url, connect_timeout=15)
+            return PostgresConnectionWrapper(pg_conn)
+        except Exception as pg_err:
+            print(f"[Database] Warning: PostgreSQL connection failed ({pg_err}). Falling back to local SQLite.")
+
+    # Local SQLite Fallback
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def seed_from_sqlite_backup(cur):
+    """
+    Auto-seeds PostgreSQL from local SQLite database / backup
+    if the PostgreSQL database is brand new and has 0 plants or users.
+    """
+    source_db = DB_PATH if os.path.exists(DB_PATH) else BACKUP_DB_PATH
+    if not os.path.exists(source_db):
+        return
+
+    try:
+        sq_conn = sqlite3.connect(source_db)
+        sq_conn.row_factory = sqlite3.Row
+        sq_cur = sq_conn.cursor()
+
+        # 1. Seed Users
+        sq_users = sq_cur.execute("SELECT * FROM users").fetchall()
+        for u in sq_users:
+            u_dict = dict(u)
+            cur.execute("""
+                INSERT INTO users (fullname, email, username, password, phone, address, city, pincode, is_admin, created_at, is_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (email) DO NOTHING
+            """, (
+                u_dict.get("fullname", ""), u_dict.get("email", ""), u_dict.get("username", ""),
+                u_dict.get("password", ""), u_dict.get("phone", ""), u_dict.get("address", ""),
+                u_dict.get("city", ""), u_dict.get("pincode", ""), u_dict.get("is_admin", 0),
+                u_dict.get("created_at", ""), u_dict.get("is_verified", 1)
+            ))
+
+        # 2. Seed Plants
+        sq_plants = sq_cur.execute("SELECT * FROM plants").fetchall()
+        for p in sq_plants:
+            p_dict = dict(p)
+            cur.execute("""
+                INSERT INTO plants (name, scientific_name, category, price, original_price, stock,
+                                    water, sunlight, soil, description, image, featured, is_active,
+                                    rating, reviews_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                p_dict.get("name", ""), p_dict.get("scientific_name", ""), p_dict.get("category", "Flowering"),
+                float(p_dict.get("price") or 249.0), float(p_dict.get("original_price") or 349.0),
+                int(p_dict.get("stock") or 20), p_dict.get("water", ""), p_dict.get("sunlight", ""),
+                p_dict.get("soil", ""), p_dict.get("description", ""), p_dict.get("image", "plantCareimage.jpeg"),
+                int(p_dict.get("featured") or 0), int(p_dict.get("is_active") or 1),
+                float(p_dict.get("rating") or 4.8), int(p_dict.get("reviews_count") or 14)
+            ))
+
+        sq_conn.close()
+        print(f"[Database] Auto-seeded {len(sq_users)} users and {len(sq_plants)} plants into PostgreSQL.")
+    except Exception as e:
+        print(f"[Database] Auto-seed warning: {e}")
+
+
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+    is_pg = isinstance(conn, PostgresConnectionWrapper)
+
+    # 1. Users Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            fullname TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            username TEXT,
+            password TEXT NOT NULL,
+            phone TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            pincode TEXT DEFAULT '',
+            is_admin INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT '',
+            is_verified INTEGER DEFAULT 1
+        )
+        """)
+        for col_def in [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified INTEGER DEFAULT 1;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';"
+        ]:
+            try:
+                cur.execute(col_def)
+            except Exception:
+                pass
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fullname TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            username TEXT,
+            password TEXT NOT NULL,
+            phone TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            pincode TEXT DEFAULT '',
+            is_admin INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT ''
+        )
+        """)
+
+    # Mark designated admin email
+    cur.execute("UPDATE users SET is_admin = 1 WHERE LOWER(email) = ?", (ADMIN_EMAIL,))
+
+    # 2. Plants Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS plants (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            scientific_name TEXT DEFAULT '',
+            category TEXT NOT NULL,
+            price REAL DEFAULT 249.0,
+            original_price REAL DEFAULT 349.0,
+            stock INTEGER DEFAULT 20,
+            water TEXT DEFAULT '2-3 times per week',
+            sunlight TEXT DEFAULT 'Bright indirect sunlight',
+            soil TEXT DEFAULT 'Well-drained rich potting soil',
+            description TEXT DEFAULT '',
+            image TEXT DEFAULT 'plantCareimage.jpeg',
+            featured INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            rating REAL DEFAULT 4.8,
+            reviews_count INTEGER DEFAULT 14,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        for col_def in [
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1;",
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS rating REAL DEFAULT 4.8;",
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS reviews_count INTEGER DEFAULT 14;"
+        ]:
+            try:
+                cur.execute(col_def)
+            except Exception:
+                pass
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS plants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            scientific_name TEXT DEFAULT '',
+            category TEXT NOT NULL,
+            price REAL DEFAULT 249.0,
+            original_price REAL DEFAULT 349.0,
+            stock INTEGER DEFAULT 20,
+            water TEXT DEFAULT '2-3 times per week',
+            sunlight TEXT DEFAULT 'Bright indirect sunlight',
+            soil TEXT DEFAULT 'Well-drained rich potting soil',
+            description TEXT DEFAULT '',
+            image TEXT DEFAULT 'plantCareimage.jpeg',
+            featured INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            rating REAL DEFAULT 4.8,
+            reviews_count INTEGER DEFAULT 14,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    # 3. Cart Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS cart (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, plant_id)
+        )
+        """)
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS cart (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, plant_id)
+        )
+        """)
+
+    # 4. Wishlist Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS wishlist (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, plant_id)
+        )
+        """)
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS wishlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, plant_id)
+        )
+        """)
+
+    # 5. Orders Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id SERIAL PRIMARY KEY,
+            order_number TEXT UNIQUE NOT NULL,
+            user_id INTEGER,
+            user_email TEXT NOT NULL,
+            customer_name TEXT NOT NULL,
+            customer_phone TEXT NOT NULL,
+            shipping_address TEXT NOT NULL,
+            city TEXT NOT NULL,
+            pincode TEXT NOT NULL,
+            payment_method TEXT NOT NULL DEFAULT 'Cash on Delivery',
+            payment_status TEXT NOT NULL DEFAULT 'Pending',
+            subtotal REAL NOT NULL DEFAULT 0.0,
+            shipping_fee REAL NOT NULL DEFAULT 0.0,
+            total_amount REAL NOT NULL DEFAULT 0.0,
+            order_status TEXT NOT NULL DEFAULT 'Pending',
+            admin_notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_number TEXT UNIQUE NOT NULL,
+            user_id INTEGER,
+            user_email TEXT NOT NULL,
+            customer_name TEXT NOT NULL,
+            customer_phone TEXT NOT NULL,
+            shipping_address TEXT NOT NULL,
+            city TEXT NOT NULL,
+            pincode TEXT NOT NULL,
+            payment_method TEXT NOT NULL DEFAULT 'Cash on Delivery',
+            payment_status TEXT NOT NULL DEFAULT 'Pending',
+            subtotal REAL NOT NULL DEFAULT 0.0,
+            shipping_fee REAL NOT NULL DEFAULT 0.0,
+            total_amount REAL NOT NULL DEFAULT 0.0,
+            order_status TEXT NOT NULL DEFAULT 'Pending',
+            admin_notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    # 6. Order Items Table
+    if is_pg:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS order_items (
+            id SERIAL PRIMARY KEY,
+            order_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            plant_name TEXT NOT NULL,
+            plant_image TEXT DEFAULT '',
+            price REAL NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            subtotal REAL NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+        """)
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            plant_id INTEGER NOT NULL,
+            plant_name TEXT NOT NULL,
+            plant_image TEXT DEFAULT '',
+            price REAL NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            subtotal REAL NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+        """)
+
+    # Auto-seed and reset sequences for PostgreSQL
+    if is_pg:
+        try:
+            plant_cnt_row = cur.execute("SELECT COUNT(*) FROM plants").fetchone()
+            if plant_cnt_row and plant_cnt_row[0] == 0:
+                seed_from_sqlite_backup(cur)
+        except Exception as seed_check_err:
+            print(f"[Database] Seed check notice: {seed_check_err}")
+
+        for tbl in ['users', 'plants', 'orders', 'order_items', 'cart', 'wishlist']:
+            try:
+                cur.execute(f"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), coalesce((SELECT MAX(id) FROM {tbl}), 1));")
+            except Exception:
+                pass
 
     conn.commit()
     conn.close()
 
 
-app = Flask(__name__)
+init_db()
 
-@app.route("/")
-def home():
-    return render_template("index.html")
 
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
+# ==============================================================================
+# HELPERS & DECORATORS
+# ==============================================================================
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Admin Email
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 
-def is_admin():
-
-    if "user" not in session:
+def verify_password(stored_password, provided_password):
+    if not stored_password or not provided_password:
         return False
-
-    return session["user"].lower() == ADMIN_EMAIL.lower()
-
-def admin_required():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    if not is_admin():
-        return redirect("/dashboard")
-
-    return None
-
-# ================= GMAIL OTP CONFIGURATION =================
-
-GMAIL_SENDER = os.getenv("GMAIL_SENDER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-
-OTP_EXPIRY_MINUTES = 5
-
-
-def send_otp_email(receiver_email, otp):
-
-    url = "https://api.resend.com/emails"
-
-    headers = {
-        "Authorization": f"Bearer {RESEND_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "from": "onboarding@resend.dev",
-        "to": [receiver_email],
-        "subject": "PlantCare Hub - Your Login OTP",
-        "text": f"""Hello,
-
-Your PlantCare Hub login OTP is:
-
-{otp}
-
-This OTP is valid for 5 minutes.
-
-If you did not request this OTP, please ignore this email.
-
-Regards,
-PlantCare Hub
-Smart Agriculture System
-"""
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data,
-        timeout=20
+    # 1. Try Werkzeug password hash verification (scrypt, pbkdf2, argon2, sha256)
+    try:
+        if check_password_hash(stored_password, provided_password):
+            return True
+        if check_password_hash(stored_password, provided_password.strip()):
+            return True
+    except Exception:
+        pass
+    # 2. Plaintext comparison (exact and trimmed)
+    p_clean = provided_password.strip()
+    s_clean = stored_password.strip()
+    return (
+        stored_password == provided_password
+        or s_clean == p_clean
+        or stored_password == p_clean
+        or s_clean == provided_password
     )
 
-    if response.status_code >= 400:
-        raise Exception(f"Resend API error: {response.text}")
 
-@app.route("/test-ai")
-def test_ai():
-    return render_template("test_ai.html")
-
-@app.route("/ai")
-def ai():
+def is_admin():
     if "user" not in session:
-        return redirect("/login")
-
-    return render_template("ai_chat.html")
-
-
-@app.route("/plant-ai", methods=["POST"])
-def plant_ai():
-
-    try:
-
-        question = request.form.get("question", "").strip()
-        image = request.files.get("image")
-
-        if not question and not image:
-            return jsonify({
-                "success": False,
-                "answer": "Please ask a plant-related question or upload a plant photo."
-            }), 400
-
-        if not OPENROUTER_API_KEY:
-            return jsonify({
-                "success": False,
-                "answer": "OpenRouter API key is missing. Check your .env file."
-            }), 500
-
-        prompt = """
-You are PlantCare AI 🌱.
-
-Answer ONLY questions related to plants and gardening.
-
-You can help with:
-
-- Plant identification
-- Scientific name
-- Plant type
-- Watering
-- Sunlight
-- Soil
-- Fertilizer
-- NPK
-- Growth
-- Flowering
-- Propagation
-- Pruning
-- Pests
-- Diseases
-- Plant health
-- Indoor plants
-- Outdoor plants
-- Vegetables
-- Fruits
-- Flowers
-- Trees
-- Medicinal plants
-
-If an image is provided:
-
-Identify the plant if possible and provide:
-
-1. Plant name
-2. Scientific name
-3. Plant type
-4. Sunlight requirements
-5. Water requirements
-6. Soil requirements
-7. Fertilizer
-8. Growth information
-9. Flowering information
-10. Propagation
-11. Common pests
-12. Common diseases
-13. Complete care instructions
-
-Never claim certainty if the image is unclear.
-
-Reply in the user's language:
-
-English → English
-Hindi → Hindi
-Hinglish → Hinglish
-
-If the question is unrelated to plants, say:
-
-"I am PlantCare AI 🌱. I can only help with plants and gardening."
-"""
-
-        user_text = question
-
-        if not user_text:
-            user_text = (
-                "Analyze this plant image and provide complete "
-                "plant identification and care information."
-            )
-
-        content = [
-            {
-                "type": "text",
-                "text": prompt + "\n\nUser: " + user_text
-            }
-        ]
-
-        # ================= IMAGE =================
-
-        if image and image.filename:
-
-            allowed_types = [
-                "image/jpeg",
-                "image/png",
-                "image/webp"
-            ]
-
-            if image.mimetype not in allowed_types:
-
-                return jsonify({
-                    "success": False,
-                    "answer": "Please upload JPG, PNG or WEBP."
-                }), 400
-
-            image_data = image.read()
-
-            if len(image_data) > 10 * 1024 * 1024:
-
-                return jsonify({
-                    "success": False,
-                    "answer": "Image must be under 10 MB."
-                }), 400
-
-            import base64
-
-            base64_image = base64.b64encode(
-                image_data
-            ).decode("utf-8")
-
-            image_url = (
-                f"data:{image.mimetype};base64,"
-                f"{base64_image}"
-            )
-
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": image_url
-                }
-            })
-
-        # ================= OPENROUTER =================
-
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "http://127.0.0.1:5000",
-                "X-Title": "PlantCare Hub"
-            },
-
-            json={
-                "model": "openrouter/free",
-
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": content
-                    }
-                ]
-            },
-
-            timeout=120
-        )
-
-        print("OPENROUTER STATUS:", response.status_code)
-
-        data = response.json()
-
-        print("OPENROUTER RESPONSE:", data)
-
-        if response.status_code != 200:
-
-            error_message = data.get(
-                "error",
-                data
-            )
-
-            return jsonify({
-                "success": False,
-                "answer": f"OpenRouter AI Error: {error_message}"
-            }), response.status_code
-
-        if "choices" not in data or not data["choices"]:
-
-            return jsonify({
-                "success": False,
-                "answer": "OpenRouter returned no AI response."
-            }), 500
-
-        answer = data["choices"][0]["message"]["content"]
-
-        return jsonify({
-            "success": True,
-            "answer": answer
-        })
-
-    except requests.exceptions.Timeout:
-
-        return jsonify({
-            "success": False,
-            "answer": "OpenRouter request timed out. Please try again."
-        }), 504
-
-    except requests.exceptions.RequestException as e:
-
-        print("OPENROUTER REQUEST ERROR:", repr(e))
-
-        return jsonify({
-            "success": False,
-            "answer": f"OpenRouter connection error: {e}"
-        }), 500
-
-    except Exception as e:
-
-        print("PLANT AI ERROR:", repr(e))
-
-        return jsonify({
-            "success": False,
-            "answer": f"AI Error: {e}"
-        }), 500
+        return False
+    user_email = session["user"].strip().lower()
+    if user_email == ADMIN_EMAIL:
+        return True
+    return bool(session.get("is_admin"))
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            flash("Please log in to access this page.", "warning")
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated_function
 
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            flash("Administrator login required.", "warning")
+            return redirect(url_for("login", next=request.path))
+        if not is_admin():
+            flash("Access restricted to store administrators.", "danger")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.context_processor
+def inject_globals():
+    cart_count = 0
+    wishlist_count = 0
+
+    if "user_id" in session:
+        conn = get_db()
+        cur = conn.cursor()
+        c = cur.execute("SELECT SUM(quantity) FROM cart WHERE user_id = ?", (session["user_id"],)).fetchone()
+        cart_count = c[0] if c and c[0] else 0
+
+        w = cur.execute("SELECT COUNT(*) FROM wishlist WHERE user_id = ?", (session["user_id"],)).fetchone()
+        wishlist_count = w[0] if w and w[0] else 0
+        conn.close()
+    else:
+        guest_cart = session.get("guest_cart", {})
+        cart_count = sum(guest_cart.values())
+        guest_wishlist = session.get("guest_wishlist", [])
+        wishlist_count = len(guest_wishlist)
+
+    session["cart_count"] = cart_count
+    session["wishlist_count"] = wishlist_count
+
+    return {
+        "cart_count": cart_count,
+        "wishlist_count": wishlist_count,
+        "is_admin_user": is_admin(),
+        "admin_email": ADMIN_EMAIL
+    }
+
+
+def get_user_wishlist_ids():
+    if "user_id" in session:
+        conn = get_db()
+        cur = conn.cursor()
+        rows = cur.execute("SELECT plant_id FROM wishlist WHERE user_id = ?", (session["user_id"],)).fetchall()
+        conn.close()
+        return {r["plant_id"] for r in rows}
+    return set(session.get("guest_wishlist", []))
+
+
+# ==============================================================================
+# AUTHENTICATION & OTP HELPERS
+# ==============================================================================
 def generate_otp():
-
+    """Generate a secure 6-digit numeric OTP."""
     return f"{secrets.randbelow(1000000):06d}"
 
 
 def hash_otp(otp):
-
-    return hashlib.sha256(
-        otp.encode()
-    ).hexdigest()
+    """Hash OTP with SHA-256 for secure session storage."""
+    return hashlib.sha256(str(otp).strip().encode("utf-8")).hexdigest()
 
 
-UPLOAD_FOLDER = "static/uploads"
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+def send_resend_email(receiver_email, subject, html_content, text_content=None):
+    """
+    Send transactional email using Resend API.
+    Reads RESEND_API_KEY and RESEND_FROM_EMAIL from environment.
+    """
+    api_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
+    from_email = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
+
+    if not api_key:
+        raise ValueError("RESEND_API_KEY is not configured in .env file.")
+
+    url = "https://api.resend.com/emails"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "from": from_email,
+        "to": [receiver_email.strip()],
+        "subject": subject,
+        "html": html_content
+    }
+    if text_content:
+        payload["text"] = text_content
+
+    response = requests.post(url, headers=headers, json=payload, timeout=20)
+    if response.status_code >= 400:
+        raise RuntimeError(f"Resend email failed ({response.status_code}): {response.text}")
+
+    return response.json()
+
+
+def send_email_smtp(receiver_email, subject, html_content, text_content=None):
+    """Deliver email directly and reliably via Gmail SMTP using app password."""
+    sender = (os.getenv("GMAIL_SENDER") or GMAIL_SENDER or "").strip()
+    app_pw = (os.getenv("GMAIL_APP_PASSWORD") or GMAIL_APP_PASSWORD or "").strip().replace(" ", "")
+
+    if not sender or not app_pw:
+        raise ValueError("GMAIL_SENDER or GMAIL_APP_PASSWORD is not configured.")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"PlantCare Hub <{sender}>"
+    msg["To"] = receiver_email.strip()
+
+    if text_content:
+        msg.attach(MIMEText(text_content, "plain", "utf-8"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+        server.login(sender, app_pw)
+        server.sendmail(sender, [receiver_email.strip()], msg.as_string())
+
+    return True
+
+
+def send_otp_email_universal(receiver_email, subject, html_content, text_content=None):
+    """
+    Universal smart email delivery:
+    - If Resend API is available and recipient is the verified test account owner (ADMIN_EMAIL)
+      OR a custom verified domain is configured, tries Resend API.
+    - If Resend is restricted by sandbox (onboarding@resend.dev sending to other users) OR fails with 403,
+      it immediately and seamlessly delivers via Gmail SMTP (GMAIL_SENDER).
+    - Guarantees every user (both owner and all registered users) receives their OTP code without 403 errors.
+    """
+    receiver_clean = receiver_email.strip()
+    api_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
+    from_email = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
+
+    is_sandbox = ("onboarding@resend.dev" in from_email.lower())
+    is_owner = (receiver_clean.lower() == ADMIN_EMAIL)
+
+    # If Resend can send (custom domain OR test account owner):
+    if api_key and (not is_sandbox or is_owner):
+        try:
+            return send_resend_email(receiver_clean, subject, html_content, text_content)
+        except Exception as e:
+            print(f"[OTP Email Engine] Resend API failed: {e}. Falling back to Gmail SMTP...")
+
+    # Deliver via Gmail SMTP for all other users or as fallback
+    try:
+        send_email_smtp(receiver_clean, subject, html_content, text_content)
+        print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Gmail SMTP.")
+        return True
+    except Exception as smtp_err:
+        print(f"[OTP Email Engine] Gmail SMTP delivery error: {smtp_err}")
+        # Last resort fallback: try Resend if not tried earlier
+        if api_key and (is_sandbox and not is_owner):
+            try:
+                return send_resend_email(receiver_clean, subject, html_content, text_content)
+            except Exception as resend_err:
+                raise RuntimeError(
+                    f"Email delivery failed. Gmail SMTP error: {smtp_err}. Resend sandbox restriction: {resend_err}"
+                )
+        raise RuntimeError(f"Could not send email via Gmail SMTP: {smtp_err}")
+
+
+def send_login_otp_email(receiver_email, otp):
+    """Send 6-digit OTP for login verification."""
+    subject = "PlantCare Hub - Login Verification OTP"
+    html_content = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #07150c; color: #ffffff; border-radius: 16px; border: 1px solid #1fa348; overflow: hidden; padding: 32px 28px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <h2 style="margin: 0; color: #19ff69; font-size: 26px; letter-spacing: 0.5px;">🌱 PlantCare Hub</h2>
+            <p style="margin: 6px 0 0; color: #9bb0a2; font-size: 13px;">Smart Agriculture & Plant Care System</p>
+        </div>
+        <div style="background: rgba(25, 255, 105, 0.08); border: 1px solid rgba(25, 255, 105, 0.25); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
+            <p style="margin: 0 0 10px; color: #e2f0e7; font-size: 15px; font-weight: 600;">Your Login Verification Code:</p>
+            <div style="font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #19ff69; padding: 12px 0; font-family: monospace;">{otp}</div>
+            <p style="margin: 10px 0 0; color: #8fa897; font-size: 12.5px;">⏱ Valid for 5 minutes. Do not share this code with anyone.</p>
+        </div>
+        <p style="color: #9bb0a2; font-size: 13px; line-height: 1.6; margin: 0 0 16px;">
+            If you did not attempt to sign in to PlantCare Hub, please ignore this email or reset your password immediately.
+        </p>
+        <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 16px; text-align: center; color: #6d8474; font-size: 11.5px;">
+            © 2026 PlantCare Hub. All rights reserved.
+        </div>
+    </div>
+    """
+    text_content = (
+        f"Hello,\n\n"
+        f"Your PlantCare Hub login verification code is: {otp}\n\n"
+        f"This OTP is valid for 5 minutes.\n\n"
+        f"If you did not request this OTP, please ignore this email.\n\n"
+        f"Regards,\nPlantCare Hub Team"
+    )
+    return send_otp_email_universal(receiver_email, subject, html_content, text_content)
+
+
+def send_forgot_password_otp_email(receiver_email, otp):
+    """Send 6-digit OTP for password reset."""
+    subject = "PlantCare Hub - Password Reset OTP"
+    html_content = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #07150c; color: #ffffff; border-radius: 16px; border: 1px solid #1fa348; overflow: hidden; padding: 32px 28px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <h2 style="margin: 0; color: #19ff69; font-size: 26px; letter-spacing: 0.5px;">🌱 PlantCare Hub</h2>
+            <p style="margin: 6px 0 0; color: #9bb0a2; font-size: 13px;">Password Reset Verification</p>
+        </div>
+        <div style="background: rgba(25, 255, 105, 0.08); border: 1px solid rgba(25, 255, 105, 0.25); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
+            <p style="margin: 0 0 10px; color: #e2f0e7; font-size: 15px; font-weight: 600;">Your Password Reset Code:</p>
+            <div style="font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #19ff69; padding: 12px 0; font-family: monospace;">{otp}</div>
+            <p style="margin: 10px 0 0; color: #8fa897; font-size: 12.5px;">⏱ Valid for 5 minutes. Enter this code to set a new password.</p>
+        </div>
+        <p style="color: #9bb0a2; font-size: 13px; line-height: 1.6; margin: 0 0 16px;">
+            If you did not request a password reset, please ignore this email. Your account remains completely secure.
+        </p>
+        <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 16px; text-align: center; color: #6d8474; font-size: 11.5px;">
+            © 2026 PlantCare Hub. All rights reserved.
+        </div>
+    </div>
+    """
+    text_content = (
+        f"Hello,\n\n"
+        f"Your PlantCare Hub password reset code is: {otp}\n\n"
+        f"This OTP is valid for 5 minutes.\n\n"
+        f"If you did not request this OTP, please ignore this email.\n\n"
+        f"Regards,\nPlantCare Hub Team"
+    )
+    return send_otp_email_universal(receiver_email, subject, html_content, text_content)
 
 
 
+def merge_guest_cart_and_wishlist(user_id):
+    """Transfers items added in guest session to the authenticated user account."""
+    guest_cart = session.get("guest_cart", {})
+    guest_wishlist = session.get("guest_wishlist", [])
+    if not guest_cart and not guest_wishlist:
+        return
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    for plant_id_str, qty in guest_cart.items():
+        try:
+            pid = int(plant_id_str)
+            row = cur.execute("SELECT id, quantity FROM cart WHERE user_id = ? AND plant_id = ?", (user_id, pid)).fetchone()
+            if row:
+                cur.execute("UPDATE cart SET quantity = quantity + ? WHERE user_id = ? AND plant_id = ?", (qty, user_id, pid))
+            else:
+                cur.execute("INSERT INTO cart (user_id, plant_id, quantity) VALUES (?, ?, ?)", (user_id, pid, qty))
+        except Exception:
+            pass
+
+    for pid in guest_wishlist:
+        try:
+            row = cur.execute("SELECT id FROM wishlist WHERE user_id = ? AND plant_id = ?", (user_id, int(pid))).fetchone()
+            if not row:
+                cur.execute("INSERT INTO wishlist (user_id, plant_id) VALUES (?, ?)", (user_id, int(pid)))
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+    session.pop("guest_cart", None)
+    session.pop("guest_wishlist", None)
+
+
+# ==============================================================================
+# AUTHENTICATION ROUTES
+# ==============================================================================
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    """New user registration."""
+    if "user" in session:
+        return redirect(url_for("home"))
+
+    if request.method == "POST":
+        fullname = request.form.get("fullname", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        if not fullname or not email or not username or not password:
+            return render_template("register.html", error="Please fill in all required fields.")
+
+        if "@" not in email or "." not in email:
+            return render_template("register.html", error="Please enter a valid Gmail / email address.")
+
+        if len(password) < 6:
+            return render_template("register.html", error="Password must contain at least 6 characters.")
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Check duplicate email
+        existing_email = cur.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,)).fetchone()
+        if existing_email:
+            conn.close()
+            return render_template("register.html", error="An account with this Gmail address already exists! Please login.")
+
+        # Check duplicate username
+        existing_user = cur.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),)).fetchone()
+        if existing_user:
+            conn.close()
+            return render_template("register.html", error="This username is already taken. Please choose another username.")
+
+        hashed_password = generate_password_hash(password)
+        is_admin_flag = 1 if email == ADMIN_EMAIL else 0
+        created_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        cur.execute(
+            """
+            INSERT INTO users (fullname, email, username, password, is_admin, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (fullname, email, username, hashed_password, is_admin_flag, created_time)
+        )
+        conn.commit()
+        conn.close()
+
+        flash("Account created successfully! Please log in with your credentials to continue.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    Step 1 of login: Verify Email & Password.
+    Upon successful credentials verification, sends a 6-digit OTP to the user's Gmail
+    and redirects to /verify-otp for two-factor authentication.
+    """
+    if "user" in session:
+        if is_admin():
+            return redirect(url_for("admin_dashboard"))
+        return redirect(url_for("home"))
 
     if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
 
-        action = request.form.get(
-            "action",
-            "send_otp"
-        )
+        if not email or not password:
+            return render_template("login.html", error="Please enter both Gmail address and password.")
 
-        # ================= VERIFY OTP =================
-
-        if action == "verify_otp":
-
-            entered_otp = request.form.get(
-                "otp",
-                ""
-            ).strip()
-
-            saved_hash = session.get("otp_hash")
-            otp_email = session.get("otp_email")
-            otp_expiry = session.get("otp_expiry")
-
-            if not saved_hash or not otp_email or not otp_expiry:
-
-                return render_template(
-                    "login.html",
-                    error="OTP session expired. Please login again.",
-                    otp_mode=False
-                )
-
-            try:
-
-                expiry_time = datetime.fromisoformat(
-                    otp_expiry
-                )
-
-            except ValueError:
-
-                session.pop("otp_hash", None)
-                session.pop("otp_email", None)
-                session.pop("otp_expiry", None)
-
-                return render_template(
-                    "login.html",
-                    error="OTP expired. Please login again.",
-                    otp_mode=False
-                )
-
-            if datetime.now() > expiry_time:
-
-                session.pop("otp_hash", None)
-                session.pop("otp_email", None)
-                session.pop("otp_expiry", None)
-
-                return render_template(
-                    "login.html",
-                    error="OTP has expired. Please request a new OTP.",
-                    otp_mode=False
-                )
-
-            if hash_otp(entered_otp) != saved_hash:
-
-                return render_template(
-                    "login.html",
-                    error="Invalid OTP. Please try again.",
-                    otp_mode=True,
-                    otp_email=otp_email
-                )
-
-            # OTP correct
-
-            session["user"] = otp_email
-
-            session.pop("otp_hash", None)
-            session.pop("otp_email", None)
-            session.pop("otp_expiry", None)
-
-            return redirect("/dashboard")
-
-
-        # ================= SEND OTP =================
-
-        email = request.form.get(
-            "email",
-            ""
-        ).strip()
-
-        password = request.form.get(
-            "password",
-            ""
-        )
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT * FROM users WHERE email=%s AND password=%s",
-            (email, password)
-        )
-
-        user = cursor.fetchone()
-
+        conn = get_db()
+        cur = conn.cursor()
+        user = cur.execute("SELECT * FROM users WHERE LOWER(email) = ?", (email,)).fetchone()
         conn.close()
 
-        if not user:
-
+        if not user or not verify_password(user["password"], password):
             return render_template(
                 "login.html",
-                error="Invalid Email or Password",
-                otp_mode=False
+                error="Invalid Gmail address or password. If you forgot your password, please click Forgot Password."
             )
 
-        # Generate OTP
-
+        # Credentials valid: Generate OTP and send via Resend
         otp = generate_otp()
 
         try:
-
-            send_otp_email(
-                email,
-                otp
-            )
-
+            send_login_otp_email(user["email"], otp)
         except Exception as e:
-
-            print(
-                "OTP EMAIL ERROR:",
-                e
-            )
-
+            print("OTP EMAIL ERROR:", e)
             return render_template(
                 "login.html",
-                error="OTP could not be sent. Please check Gmail configuration.",
-                otp_mode=False
+                error=f"Could not send OTP to your Gmail. Please check configuration or try again: {str(e)}"
             )
 
-        # Store OTP securely as hash
+        # Store pending login session
+        session["pending_user_id"] = user["id"]
+        session["pending_email"] = user["email"]
+        session["pending_fullname"] = user["fullname"]
+        session["pending_is_admin"] = bool(user["is_admin"] or user["email"].lower() == ADMIN_EMAIL)
+        session["login_otp_hash"] = hash_otp(otp)
+        session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        session["otp_hash"] = hash_otp(otp)
+        flash(f"A 6-digit OTP code has been sent to {user['email']}.", "info")
+        return redirect(url_for("verify_otp"))
 
-        session["otp_email"] = email
+    return render_template("login.html")
 
-        session["otp_expiry"] = (
-            datetime.now()
-            + timedelta(
-                minutes=OTP_EXPIRY_MINUTES
+
+@app.route("/verify-otp", methods=["GET", "POST"])
+def verify_otp():
+    """
+    Step 2 of login: Verify 6-digit Gmail OTP.
+    Once verified, logs the user into the website and sets session.
+    """
+    if "user" in session:
+        return redirect(url_for("home"))
+
+    pending_email = session.get("pending_email")
+    saved_hash = session.get("login_otp_hash")
+    otp_expiry = session.get("login_otp_expiry")
+
+    if not pending_email or not saved_hash or not otp_expiry:
+        flash("No pending OTP session found. Please login first.", "warning")
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        entered_otp = request.form.get("otp", "").strip()
+
+        try:
+            expiry_time = datetime.fromisoformat(otp_expiry)
+        except (ValueError, TypeError):
+            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
+                session.pop(k, None)
+            flash("OTP session expired. Please login again.", "danger")
+            return redirect(url_for("login"))
+
+        if datetime.now() > expiry_time:
+            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
+                session.pop(k, None)
+            flash("OTP has expired (valid 5 minutes). Please login again to request a new code.", "danger")
+            return redirect(url_for("login"))
+
+        if hash_otp(entered_otp) != saved_hash:
+            return render_template(
+                "verify_otp.html",
+                error="Invalid OTP code. Please enter the correct 6-digit code sent to your Gmail.",
+                email=pending_email
             )
-        ).isoformat()
 
-        return render_template(
-            "login.html",
-            otp_mode=True,
-            otp_email=email,
-            message="OTP sent successfully to your email."
-        )
+        # OTP verified successfully: Log user in
+        user_id = session.get("pending_user_id")
+        fullname = session.get("pending_fullname")
+        is_admin_flag = session.get("pending_is_admin", False)
 
-    return render_template(
-        "login.html",
-        otp_mode=False
-    )
+        session["user_id"] = user_id
+        session["user"] = pending_email
+        session["fullname"] = fullname
+        session["is_admin"] = is_admin_flag
 
+        merge_guest_cart_and_wishlist(user_id)
 
-    # =========================================================
-# FORGOT PASSWORD OTP
-# =========================================================
+        # Clean pending authentication session
+        for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
+            session.pop(k, None)
 
-def send_forgot_password_otp_email(receiver_email, otp):
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    resend_from_email = os.getenv("RESEND_FROM_EMAIL")
+        flash(f"Welcome back, {fullname}! You have successfully logged in.", "success")
 
-    if not resend_api_key:
-        raise Exception("RESEND_API_KEY is not configured")
+        if is_admin_flag:
+            return redirect(url_for("admin_dashboard"))
+        return redirect(url_for("home"))
 
-    if not resend_from_email:
-        raise Exception("RESEND_FROM_EMAIL is not configured")
-
-    subject = "PlantCare Hub - Password Reset OTP"
-
-    body = f"""
-Hello,
-
-Your PlantCare Hub password reset OTP is:
-
-{otp}
-
-This OTP is valid for {OTP_EXPIRY_MINUTES} minutes.
-
-If you did not request a password reset, please ignore this email.
-
-PlantCare Hub
-"""
-
-    response = requests.post(
-        "https://api.resend.com/emails",
-        headers={
-            "Authorization": f"Bearer {resend_api_key}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "from": resend_from_email,
-            "to": [receiver_email],
-            "subject": subject,
-            "text": body
-        },
-        timeout=20
-    )
-
-    if response.status_code >= 400:
-        raise Exception(
-            f"Resend email failed: {response.status_code} - {response.text}"
-        )
+    return render_template("verify_otp.html", email=pending_email)
 
 
-# =========================================================
-# FORGOT PASSWORD
-# =========================================================
+@app.route("/resend-otp")
+def resend_otp():
+    """Resend a new 6-digit OTP code to the pending user's Gmail."""
+    pending_email = session.get("pending_email")
+    if not pending_email:
+        flash("Please login first to request an OTP.", "warning")
+        return redirect(url_for("login"))
 
+    otp = generate_otp()
+    try:
+        send_login_otp_email(pending_email, otp)
+    except Exception as e:
+        print("RESEND OTP ERROR:", e)
+        flash(f"Could not resend OTP: {str(e)}", "danger")
+        return redirect(url_for("verify_otp"))
+
+    session["login_otp_hash"] = hash_otp(otp)
+    session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
+
+    flash("A fresh 6-digit OTP code has been sent to your Gmail.", "success")
+    return redirect(url_for("verify_otp"))
+
+
+# ==============================================================================
+# FORGOT PASSWORD ROUTES
+# ==============================================================================
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
-
+    """Initiate password reset by sending OTP to registered Gmail."""
     if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
 
-        email = request.form.get(
-            "email",
-            ""
-        ).strip()
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT id FROM users WHERE email=%s",
-            (email,)
-        )
-
-        user = cursor.fetchone()
-
+        conn = get_db()
+        cur = conn.cursor()
+        user = cur.execute("SELECT id, fullname, email FROM users WHERE LOWER(email) = ?", (email,)).fetchone()
         conn.close()
 
         if not user:
-
             return render_template(
                 "login.html",
                 forgot_mode=True,
-                error="No account found with this Gmail address."
+                error="No account found with this Gmail address. Please check and try again."
             )
-
-        # Generate OTP
 
         otp = generate_otp()
 
         try:
-
-            send_forgot_password_otp_email(
-                email,
-                otp
-            )
-
+            send_forgot_password_otp_email(user["email"], otp)
         except Exception as e:
-
-            print(
-                "FORGOT PASSWORD OTP ERROR:",
-                e
-            )
-
+            print("FORGOT PASSWORD OTP ERROR:", e)
             return render_template(
                 "login.html",
                 forgot_mode=True,
-                error="OTP could not be sent. Please check Gmail configuration."
+                error=f"Could not send reset OTP to your Gmail: {str(e)}"
             )
 
-        # Store forgot-password OTP separately
-
+        session["forgot_otp_email"] = user["email"]
         session["forgot_otp_hash"] = hash_otp(otp)
-
-        session["forgot_otp_email"] = email
-
-        session["forgot_otp_expiry"] = (
-            datetime.now()
-            + timedelta(
-                minutes=OTP_EXPIRY_MINUTES
-            )
-        ).isoformat()
+        session["forgot_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
         return render_template(
             "login.html",
             forgot_otp_mode=True,
-            otp_email=email,
-            message="Password reset OTP sent successfully."
+            otp_email=user["email"],
+            message="Password reset OTP sent successfully to your Gmail."
         )
 
-    return render_template(
-        "login.html",
-        forgot_mode=True
-    )
+    return render_template("login.html", forgot_mode=True)
 
-
-# =========================================================
-# VERIFY FORGOT PASSWORD OTP
-# =========================================================
 
 @app.route("/forgot-password/verify", methods=["POST"])
 def verify_forgot_password():
-
-    entered_otp = request.form.get(
-        "otp",
-        ""
-    ).strip()
-
-    saved_hash = session.get(
-        "forgot_otp_hash"
-    )
-
-    email = session.get(
-        "forgot_otp_email"
-    )
-
-    expiry = session.get(
-        "forgot_otp_expiry"
-    )
+    """Verify OTP entered for password reset."""
+    entered_otp = request.form.get("otp", "").strip()
+    saved_hash = session.get("forgot_otp_hash")
+    email = session.get("forgot_otp_email")
+    expiry = session.get("forgot_otp_expiry")
 
     if not saved_hash or not email or not expiry:
-
         return render_template(
             "login.html",
-            forgot_otp_mode=True,
-            error="OTP session expired. Please request a new OTP.",
-            otp_email=email
+            forgot_mode=True,
+            error="OTP session expired. Please request a new OTP."
         )
 
     try:
-
-        expiry_time = datetime.fromisoformat(
-            expiry
-        )
-
-    except ValueError:
-
-        session.pop("forgot_otp_hash", None)
-        session.pop("forgot_otp_email", None)
-        session.pop("forgot_otp_expiry", None)
-
+        expiry_time = datetime.fromisoformat(expiry)
+    except (ValueError, TypeError):
+        for k in ["forgot_otp_hash", "forgot_otp_email", "forgot_otp_expiry", "forgot_verified"]:
+            session.pop(k, None)
         return render_template(
             "login.html",
             forgot_mode=True,
@@ -757,30 +1169,24 @@ def verify_forgot_password():
         )
 
     if datetime.now() > expiry_time:
-
-        session.pop("forgot_otp_hash", None)
-        session.pop("forgot_otp_email", None)
-        session.pop("forgot_otp_expiry", None)
-
+        for k in ["forgot_otp_hash", "forgot_otp_email", "forgot_otp_expiry", "forgot_verified"]:
+            session.pop(k, None)
         return render_template(
             "login.html",
             forgot_mode=True,
-            error="OTP has expired. Please request a new OTP."
+            error="OTP has expired (valid 5 minutes). Please request a new OTP."
         )
 
     if hash_otp(entered_otp) != saved_hash:
-
         return render_template(
             "login.html",
             forgot_otp_mode=True,
-            error="Invalid OTP. Please try again.",
-            otp_email=email
+            otp_email=email,
+            error="Invalid OTP. Please check your Gmail and try again."
         )
 
-    # OTP correct
-
+    # OTP verified for password reset
     session["forgot_verified"] = True
-
     return render_template(
         "login.html",
         reset_password_mode=True,
@@ -788,37 +1194,20 @@ def verify_forgot_password():
     )
 
 
-# =========================================================
-# RESET PASSWORD
-# =========================================================
-
 @app.route("/forgot-password/reset", methods=["POST"])
 def reset_password():
-
+    """Update password after OTP verification."""
     if not session.get("forgot_verified"):
+        return redirect(url_for("forgot_password"))
 
-        return redirect("/forgot-password")
-
-    email = session.get(
-        "forgot_otp_email"
-    )
-
-    new_password = request.form.get(
-        "new_password",
-        ""
-    )
-
-    confirm_password = request.form.get(
-        "confirm_password",
-        ""
-    )
+    email = session.get("forgot_otp_email")
+    new_password = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
 
     if not email:
-
-        return redirect("/forgot-password")
+        return redirect(url_for("forgot_password"))
 
     if not new_password:
-
         return render_template(
             "login.html",
             reset_password_mode=True,
@@ -827,7 +1216,6 @@ def reset_password():
         )
 
     if len(new_password) < 6:
-
         return render_template(
             "login.html",
             reset_password_mode=True,
@@ -836,994 +1224,1218 @@ def reset_password():
         )
 
     if new_password != confirm_password:
-
         return render_template(
             "login.html",
             reset_password_mode=True,
             otp_email=email,
-            error="Passwords do not match."
+            error="Passwords do not match. Please re-enter."
         )
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE users
-        SET password=%s
-        WHERE email=%s
-        """,
-        (
-            new_password,
-            email
-        )
-    )
-
+    conn = get_db()
+    cur = conn.cursor()
+    hashed = generate_password_hash(new_password)
+    cur.execute("UPDATE users SET password = ? WHERE LOWER(email) = ?", (hashed, email.lower()))
     conn.commit()
     conn.close()
 
     # Clear forgot-password session
-
-    session.pop("forgot_otp_hash", None)
-    session.pop("forgot_otp_email", None)
-    session.pop("forgot_otp_expiry", None)
-    session.pop("forgot_verified", None)
+    for k in ["forgot_otp_hash", "forgot_otp_email", "forgot_otp_expiry", "forgot_verified"]:
+        session.pop(k, None)
 
     return render_template(
         "login.html",
         reset_success=True,
-        message="Password changed successfully. Please login with your new password."
+        message="Password updated successfully. Please login with your new password."
     )
-
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        fullname = request.form["fullname"]
-        email = request.form["email"]
-        username = request.form["username"]
-        password = request.form["password"]
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-
-        # Check duplicate email/username
-        cur.execute(
-    "SELECT * FROM users WHERE email=%s",
-    (email,))
-
-        if cur.fetchone():
-            conn.close()
-            return render_template(
-                "register.html",
-                error="Email already exists!"
-            )
-
-        cur.execute(
-            "INSERT INTO users (fullname,email,username,password) VALUES (%s,%s,%s,%s)",
-            (fullname, email, username, password)
-        )
-
-        conn.commit()
-        conn.close()
-
-        return redirect("/login")
-
-    return render_template("register.html")
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard():
+    """Universal dashboard redirect."""
+    if is_admin():
+        return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("home"))
 
-    if "user" not in session:
-        return redirect("/login")
-
-    email = session["user"]
-    today = date.today().isoformat()
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    # ================= TOTAL PLANTS =================
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM plants
-        WHERE owner_email=%s
-    """, (email,))
-    total_plants = cursor.fetchone()[0]
-
-    # ================= NEED WATER =================
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM plants
-        WHERE owner_email=%s
-        AND watering_date < %s
-        AND reminder_status != 'Completed'
-    """, (email, today))
-    need_water = cursor.fetchone()[0]
-
-    # ================= NEED FERTILIZER =================
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM plants
-        WHERE owner_email=%s
-        AND fertilizer_date < %s
-        AND fertilizer_status != 'Completed'
-    """, (email, today))
-    need_fertilizer = cursor.fetchone()[0]
-
-    # ================= HEALTHY PLANTS =================
-    # Healthy = Watering due nahi hai
-    # AND Fertilizer due nahi hai
-    cursor.execute("""
-        SELECT COUNT(*)
-        FROM plants
-        WHERE owner_email=%s
-        AND (
-            watering_date >= %s
-            OR reminder_status = 'Completed'
-        )
-        AND (
-            fertilizer_date >= %s
-            OR fertilizer_status = 'Completed'
-        )
-    """, (email, today, today))
-
-    healthy = cursor.fetchone()[0]
-
-    # ================= RECENT PLANTS =================
-    cursor.execute("""
-        SELECT *
-        FROM plants
-        WHERE owner_email=%s
-        ORDER BY id DESC
-        LIMIT 5
-    """, (email,))
-
-    plants = cursor.fetchall()
-
-    conn.close()
-
-    return render_template(
-        "dashboard.html",
-        ADMIN_EMAIL=ADMIN_EMAIL,
-        total_plants=total_plants,
-        healthy=healthy,
-        need_water=need_water,
-        need_fertilizer=need_fertilizer,
-        plants=plants
-    )
-
-@app.route("/addplant", methods=["GET", "POST"])
-def addplant():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    if request.method == "POST":
-
-        image = request.files["image"]
-        filename = secure_filename(image.filename)
-
-        image.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        INSERT INTO plants
-    (
-        name,
-        scientific_name,
-        water,
-        sunlight,
-        soil,
-        image,
-        owner_email,
-        category,
-        watering_date,
-        fertilizer_date,
-        health_status,
-        reminder_status,
-        fertilizer_status
-    )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            request.form["name"],
-            request.form["scientific_name"],
-            request.form["water"],
-            request.form["sunlight"],
-            request.form["soil"],
-            filename,
-            session["user"],
-            request.form["category"],
-            request.form["watering_date"],
-            request.form["fertilizer_date"],
-            "Healthy",
-            "upcoming",
-            "upcoming"
-        ))
-
-        conn.commit()
-        conn.close()
-
-        return redirect("/plantlist")
-
-    return render_template("addplant.html")
-
-@app.route("/plantlist")
-def plantlist():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    search = request.args.get("search", "")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    if search:
-        cursor.execute(
-            """
-            SELECT * FROM plants
-            WHERE owner_email=%s AND name LIKE %s
-            ORDER BY id DESC
-            """,
-            (session["user"], '%' + search + '%')
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT * FROM plants
-            WHERE owner_email=%s
-            ORDER BY id DESC
-            """,
-            (session["user"],)
-        )
-
-    plants = cursor.fetchall()
-
-    conn.close()
-
-    return render_template(
-        "plantlist.html",
-        plants=plants
-    )
-
-@app.route("/delete/<int:id>")
-def delete(id):
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "DELETE FROM plants WHERE id=%s AND owner_email=%s",
-        (id, session["user"])
-    )
-
-    conn.commit()
-    conn.close()
-
-    return redirect("/plantlist")
-
-@app.route("/edit/<int:id>", methods=["GET", "POST"])
-def edit(id):
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    # Check that this plant belongs to the logged-in user
-    cursor.execute(
-        "SELECT * FROM plants WHERE id=%s AND owner_email=%s",
-        (id, session["user"])
-    )
-
-    plant = cursor.fetchone()
-
-    if not plant:
-        conn.close()
-        return redirect("/plantlist")
-
-    if request.method == "POST":
-
-        cursor.execute("""
-        UPDATE plants
-        SET
-            name=%s,
-            scientific_name=%s,
-            water=%s,
-            sunlight=%s,
-            soil=%s,
-            category=%s,
-            watering_date=%s,
-            fertilizer_date=%s,
-            health_status=%s,
-            reminder_status='Pending',
-            fertilizer_status='Pending'
-        WHERE id=%s AND owner_email=%s
-        """, (
-
-            request.form["name"],
-            request.form["scientific_name"],
-            request.form["water"],
-            request.form["sunlight"],
-            request.form["soil"],
-            request.form["category"],
-            request.form["watering_date"],
-            request.form["fertilizer_date"],
-            request.form["health_status"],
-            id,
-            session["user"]
-
-        ))
-
-        conn.commit()
-        conn.close()
-
-        return redirect("/plantlist")
-
-    conn.close()
-
-    return render_template(
-        "editplant.html",
-        plant=plant
-    )
 
 @app.route("/logout")
 def logout():
-    session.pop("user", None)
-    return redirect("/login")
+    """Clear session and log user out."""
+    session.clear()
+    flash("You have been logged out successfully.", "info")
+    return redirect(url_for("home"))
 
 
 
-@app.route("/reminders")
-def reminders():
+# ==============================================================================
+# STOREFRONT ROUTES (CUSTOMER FACING)
+# ==============================================================================
+@app.route("/")
+def home():
+    conn = get_db()
+    cur = conn.cursor()
+    featured_plants = cur.execute(
+        "SELECT * FROM plants WHERE is_active = 1 ORDER BY id DESC LIMIT 8"
+    ).fetchall()
+    wishlist_ids = get_user_wishlist_ids()
+    conn.close()
+    return render_template("index.html", featured_plants=featured_plants, wishlist_ids=wishlist_ids)
 
-    if "user" not in session:
-        return redirect("/login")
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=%s",
-        (session["user"],)
-    )
 
-    plants = cursor.fetchall()
+@app.route("/shop")
+def shop():
+    category = request.args.get("category", "").strip()
+    search = request.args.get("search", "").strip()
+    sort = request.args.get("sort", "newest").strip()
 
-    reminder_data = []
-    today = date.today()
+    conn = get_db()
+    cur = conn.cursor()
 
-    for plant in plants:
+    query = "SELECT * FROM plants WHERE is_active = 1"
+    params = []
 
-        watering_date = date.fromisoformat(plant["watering_date"])
+    if category:
+        query += " AND LOWER(category) = LOWER(?)"
+        params.append(category)
 
-        if plant["reminder_status"] == "Completed":
-            status = "Completed"
-        elif watering_date < today:
-            status = "Overdue"
-        elif watering_date == today:
-            status = "Today"
-        else:
-            status = "Pending"
+    if search:
+        query += " AND (LOWER(name) LIKE ? OR LOWER(scientific_name) LIKE ? OR LOWER(description) LIKE ?)"
+        wildcard = f"%{search.lower()}%"
+        params.extend([wildcard, wildcard, wildcard])
 
-        reminder_data.append({
-            "id": plant["id"],
-            "plant": plant["name"],
-            "watering_date": watering_date.strftime("%d-%m-%Y"),
-            "status": status
-        })
+    if sort == "price_asc":
+        query += " ORDER BY price ASC"
+    elif sort == "price_desc":
+        query += " ORDER BY price DESC"
+    elif sort == "name_asc":
+        query += " ORDER BY name ASC"
+    else:
+        query += " ORDER BY id DESC"
 
+    plants = cur.execute(query, params).fetchall()
+
+    all_categories = cur.execute(
+        "SELECT category, COUNT(*) as count FROM plants WHERE is_active = 1 GROUP BY category ORDER BY count DESC"
+    ).fetchall()
+
+    wishlist_ids = get_user_wishlist_ids()
     conn.close()
 
     return render_template(
-        "reminders.html",
-        reminders=reminder_data
+        "shop.html",
+        plants=plants,
+        current_category=category,
+        search=search,
+        sort=sort,
+        all_categories=all_categories,
+        wishlist_ids=wishlist_ids
     )
 
 
-@app.route("/fertilizer")
-def fertilizer():
+@app.route("/plant/<int:id>")
+def plant_details(id):
+    conn = get_db()
+    cur = conn.cursor()
 
-    if "user" not in session:
-        return redirect("/login")
+    plant = cur.execute("SELECT * FROM plants WHERE id = ?", (id,)).fetchone()
+    if not plant:
+        conn.close()
+        flash("Plant not found in our nursery catalog.", "error")
+        return redirect(url_for("shop"))
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    related_plants = cur.execute(
+        "SELECT * FROM plants WHERE category = ? AND id != ? AND is_active = 1 LIMIT 4",
+        (plant["category"], id)
+    ).fetchall()
 
-    cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=%s",
-        (session["user"],)
-    )
-
-    plants = cursor.fetchall()
-
-    fertilizer_data = []
-    today = date.today()
-
-    for plant in plants:
-
-        fertilizer_date = date.fromisoformat(
-            plant["fertilizer_date"]
-        )
-
-        if plant["fertilizer_status"] == "Completed":
-            status = "Completed"
-        elif fertilizer_date < today:
-            status = "Overdue"
-        elif fertilizer_date == today:
-            status = "Today"
-        else:
-            status = "upcoming"
-
-        fertilizer_data.append({
-            "id": plant["id"],
-            "plant": plant["name"],
-            "fertilizer_date": fertilizer_date.strftime("%d-%m-%Y"),
-            "status": status
-        })
-
+    wishlist_ids = get_user_wishlist_ids()
     conn.close()
 
     return render_template(
-        "fertilizer.html",
-        fertilizers=fertilizer_data
-    )
-
-
-@app.route("/health")
-def health():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute(
-        "SELECT * FROM plants WHERE owner_email=%s",
-        (session["user"],)
-    )
-
-    plants = cursor.fetchall()
-
-    today = date.today()
-    health = []
-
-    for plant in plants:
-
-        watering_date = date.fromisoformat(
-            plant["watering_date"]
-        )
-
-        fertilizer_date = date.fromisoformat(
-            plant["fertilizer_date"]
-        )
-
-        water_overdue = (
-            watering_date < today
-            and plant["reminder_status"] != "Completed"
-        )
-
-        fertilizer_overdue = (
-            fertilizer_date < today
-            and plant["fertilizer_status"] != "Completed"
-        )
-
-        if water_overdue and fertilizer_overdue:
-            status = "Sick"
-
-        elif water_overdue or fertilizer_overdue:
-            status = "Needs Attention"
-
-        else:
-            status = "Healthy"
-
-        cursor.execute("""
-            UPDATE plants
-            SET health_status=%s
-            WHERE id=%s AND owner_email=%s
-        """, (
-            status,
-            plant["id"],
-            session["user"]
-        ))
-
-        health.append({
-            "plant": plant["name"],
-            "status": status
-        })
-
-    conn.commit()
-    conn.close()
-
-    return render_template(
-        "health.html",
-        health=health
+        "plant_details.html",
+        plant=plant,
+        related_plants=related_plants,
+        wishlist_ids=wishlist_ids
     )
 
 
 @app.route("/categories")
 def categories():
+    conn = get_db()
+    cur = conn.cursor()
 
-    if "user" not in session:
-        return redirect("/login")
+    cats = cur.execute(
+        "SELECT category, COUNT(*) as count FROM plants WHERE is_active = 1 GROUP BY category ORDER BY count DESC"
+    ).fetchall()
+    conn.close()
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    meta = {
+        "Flowering": {"icon": "🌸", "desc": "Fragrant and vibrant blooming roses, lilies, hibiscus, and jasmines to enrich garden color."},
+        "Medicinal": {"icon": "🌿", "desc": "Sacred Holy Tulsi, soothing Aloe Vera, and organic healing herbs for family wellness."},
+        "Indoor": {"icon": "🪴", "desc": "Lush foliage plants that flourish under indirect light and elevate room aesthetic."},
+        "Air Purifying": {"icon": "🍃", "desc": "Natural botanical detoxifiers certified to purify indoor air toxins and boost oxygen."},
+        "Succulent": {"icon": "🌵", "desc": "Hardy, sculptural plants requiring minimal watering and thriving in sunlit windows."},
+        "Outdoor": {"icon": "🌳", "desc": "Sun-loving hearty shrubs, decorative hedges, and terrace flowering plants."}
+    }
 
-    cursor.execute("""
-        SELECT category, COUNT(*) as total
-        FROM plants
-        WHERE owner_email=%s
-        GROUP BY category
-    """, (
-        session["user"],
-    ))
+    categories_data = []
+    for c in cats:
+        cat_name = c["category"]
+        info = meta.get(cat_name, {"icon": "🌱", "desc": "Healthy and vibrant nursery cultivated plants."})
+        categories_data.append({
+            "name": cat_name,
+            "count": c["count"],
+            "icon": info["icon"],
+            "desc": info["desc"]
+        })
 
-    categories = cursor.fetchall()
+    # Add any standard categories not yet populated with count 0
+    for name, info in meta.items():
+        if not any(cd["name"].lower() == name.lower() for cd in categories_data):
+            categories_data.append({
+                "name": name,
+                "count": 0,
+                "icon": info["icon"],
+                "desc": info["desc"]
+            })
+
+    return render_template("categories.html", categories_data=categories_data)
+
+
+# ==============================================================================
+# CART & WISHLIST MANAGEMENT
+# ==============================================================================
+@app.route("/cart")
+def cart():
+    cart_items = []
+    subtotal = 0.0
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    if "user_id" in session:
+        rows = cur.execute("""
+            SELECT c.id as cart_id, c.quantity, p.id as plant_id, p.name, p.category, p.price, p.image, p.stock
+            FROM cart c
+            JOIN plants p ON c.plant_id = p.id
+            WHERE c.user_id = ?
+        """, (session["user_id"],)).fetchall()
+        for r in rows:
+            item_dict = dict(r)
+            subtotal += item_dict["price"] * item_dict["quantity"]
+            cart_items.append(item_dict)
+    else:
+        guest_cart = session.get("guest_cart", {})
+        for pid_str, qty in guest_cart.items():
+            plant = cur.execute("SELECT id, name, category, price, image, stock FROM plants WHERE id = ?", (int(pid_str),)).fetchone()
+            if plant:
+                item_dict = dict(plant)
+                item_dict["plant_id"] = plant["id"]
+                item_dict["quantity"] = qty
+                subtotal += plant["price"] * qty
+                cart_items.append(item_dict)
 
     conn.close()
+
+    shipping_fee = 0.0 if (subtotal >= 499.0 or subtotal == 0) else 50.0
+    total = subtotal + shipping_fee
 
     return render_template(
-        "categories.html",
-        categories=categories
+        "cart.html",
+        cart_items=cart_items,
+        subtotal=subtotal,
+        shipping_fee=shipping_fee,
+        total=total
     )
 
 
-@app.route("/complete_reminder/<int:id>")
-def complete_reminder(id):
+@app.route("/add-to-cart/<int:id>", methods=["POST"])
+def add_to_cart(id):
+    try:
+        quantity = max(1, int(request.form.get("quantity", 1)))
+    except ValueError:
+        quantity = 1
 
-    if "user" not in session:
-        return redirect("/login")
+    buy_now = request.form.get("buy_now") == "1"
 
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
+    plant = cur.execute("SELECT * FROM plants WHERE id = ? AND is_active = 1", (id,)).fetchone()
 
-    cursor.execute("""
-        UPDATE plants
-        SET reminder_status='Completed'
-        WHERE id=%s AND owner_email=%s
-    """, (
-        id,
-        session["user"]
-    ))
+    if not plant:
+        conn.close()
+        flash("Plant not found.", "error")
+        return redirect(url_for("shop"))
 
-    conn.commit()
-    conn.close()
+    if plant["stock"] < 1:
+        conn.close()
+        flash(f"Sorry, {plant['name']} is currently out of stock.", "error")
+        return redirect(url_for("plant_details", id=id))
 
-    return redirect("/reminders")
+    quantity = min(quantity, plant["stock"])
 
+    if "user_id" in session:
+        existing = cur.execute(
+            "SELECT id, quantity FROM cart WHERE user_id = ? AND plant_id = ?",
+            (session["user_id"], id)
+        ).fetchone()
 
-@app.route("/complete_fertilizer/<int:id>")
-def complete_fertilizer(id):
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE plants
-        SET fertilizer_status='Completed'
-        WHERE id=%s AND owner_email=%s
-    """, (
-        id,
-        session["user"]
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return redirect("/fertilizer")
-
-
-@app.route("/category/<category>")
-def category_plants(category):
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cursor.execute(
-        """
-        SELECT * FROM plants
-        WHERE category=%s AND owner_email=%s
-        """,
-        (
-            category,
-            session["user"]
-        )
-    )
-
-    plants = cursor.fetchall()
+        if existing:
+            new_qty = min(plant["stock"], existing["quantity"] + quantity)
+            cur.execute("UPDATE cart SET quantity = ? WHERE id = ?", (new_qty, existing["id"]))
+        else:
+            cur.execute(
+                "INSERT INTO cart (user_id, plant_id, quantity) VALUES (?, ?, ?)",
+                (session["user_id"], id, quantity)
+            )
+        conn.commit()
+    else:
+        guest_cart = session.get("guest_cart", {})
+        pid_str = str(id)
+        current = guest_cart.get(pid_str, 0)
+        guest_cart[pid_str] = min(plant["stock"], current + quantity)
+        session["guest_cart"] = guest_cart
 
     conn.close()
 
-    return render_template(
-        "category_plants.html",
-        plants=plants,
-        category=category
-    )
+    if buy_now:
+        return redirect(url_for("checkout"))
 
-@app.route("/profile")
-def profile():
+    flash(f"Added {quantity}x {plant['name']} to your cart!", "success")
+    return redirect(request.referrer or url_for("cart"))
 
-    if "user" not in session:
-        return redirect("/login")
 
-    conn = psycopg2.connect(
-    DATABASE_URL,
-    cursor_factory=psycopg2.extras.RealDictCursor
-    )
-    cursor = conn.cursor()
+@app.route("/update-cart/<int:id>", methods=["POST"])
+def update_cart(id):
+    try:
+        new_qty = int(request.form.get("quantity", 1))
+    except ValueError:
+        new_qty = 1
 
-    cursor.execute(
-        "SELECT * FROM users WHERE email=%s",
-        (session["user"],)
-    )
+    conn = get_db()
+    cur = conn.cursor()
 
-    user = cursor.fetchone()
+    if new_qty <= 0:
+        if "user_id" in session:
+            cur.execute("DELETE FROM cart WHERE user_id = ? AND plant_id = ?", (session["user_id"], id))
+            conn.commit()
+        else:
+            guest_cart = session.get("guest_cart", {})
+            guest_cart.pop(str(id), None)
+            session["guest_cart"] = guest_cart
+        flash("Item removed from cart.", "info")
+    else:
+        plant = cur.execute("SELECT stock, name FROM plants WHERE id = ?", (id,)).fetchone()
+        if plant:
+            capped_qty = min(plant["stock"], new_qty)
+            if "user_id" in session:
+                cur.execute(
+                    "UPDATE cart SET quantity = ? WHERE user_id = ? AND plant_id = ?",
+                    (capped_qty, session["user_id"], id)
+                )
+                conn.commit()
+            else:
+                guest_cart = session.get("guest_cart", {})
+                guest_cart[str(id)] = capped_qty
+                session["guest_cart"] = guest_cart
 
     conn.close()
+    return redirect(url_for("cart"))
 
-    return render_template("profile.html", user=user)
 
-@app.route("/edit_profile", methods=["GET", "POST"])
-def edit_profile():
+@app.route("/remove-from-cart/<int:id>")
+def remove_from_cart(id):
+    conn = get_db()
+    cur = conn.cursor()
 
-    if "user" not in session:
-        return redirect("/login")
+    if "user_id" in session:
+        cur.execute("DELETE FROM cart WHERE user_id = ? AND plant_id = ?", (session["user_id"], id))
+        conn.commit()
+    else:
+        guest_cart = session.get("guest_cart", {})
+        guest_cart.pop(str(id), None)
+        session["guest_cart"] = guest_cart
 
-    conn = psycopg2.connect(
-    DATABASE_URL,
-    cursor_factory=psycopg2.extras.RealDictCursor
-    )
-    cursor = conn.cursor()
+    conn.close()
+    flash("Item removed from cart.", "info")
+    return redirect(url_for("cart"))
+
+
+@app.route("/clear-cart")
+def clear_cart():
+    if "user_id" in session:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM cart WHERE user_id = ?", (session["user_id"],))
+        conn.commit()
+        conn.close()
+    else:
+        session.pop("guest_cart", None)
+
+    flash("Cart cleared.", "info")
+    return redirect(url_for("cart"))
+
+
+@app.route("/wishlist")
+def wishlist():
+    conn = get_db()
+    cur = conn.cursor()
+    wishlist_items = []
+
+    if "user_id" in session:
+        wishlist_items = cur.execute("""
+            SELECT p.* FROM wishlist w
+            JOIN plants p ON w.plant_id = p.id
+            WHERE w.user_id = ? AND p.is_active = 1
+            ORDER BY w.id DESC
+        """, (session["user_id"],)).fetchall()
+    else:
+        guest_wishlist = session.get("guest_wishlist", [])
+        if guest_wishlist:
+            placeholders = ",".join("?" * len(guest_wishlist))
+            wishlist_items = cur.execute(
+                f"SELECT * FROM plants WHERE id IN ({placeholders}) AND is_active = 1",
+                guest_wishlist
+            ).fetchall()
+
+    conn.close()
+    return render_template("wishlist.html", wishlist_items=wishlist_items)
+
+
+@app.route("/toggle-wishlist/<int:id>")
+def toggle_wishlist(id):
+    conn = get_db()
+    cur = conn.cursor()
+    plant = cur.execute("SELECT name FROM plants WHERE id = ?", (id,)).fetchone()
+
+    if not plant:
+        conn.close()
+        flash("Plant not found.", "error")
+        return redirect(request.referrer or url_for("shop"))
+
+    plant_name = plant["name"]
+
+    if "user_id" in session:
+        existing = cur.execute(
+            "SELECT id FROM wishlist WHERE user_id = ? AND plant_id = ?",
+            (session["user_id"], id)
+        ).fetchone()
+
+        if existing:
+            cur.execute("DELETE FROM wishlist WHERE id = ?", (existing["id"],))
+            flash(f"Removed {plant_name} from your wishlist.", "info")
+        else:
+            cur.execute("INSERT INTO wishlist (user_id, plant_id) VALUES (?, ?)", (session["user_id"], id))
+            flash(f"Added {plant_name} to your wishlist!", "success")
+        conn.commit()
+    else:
+        guest_wishlist = session.get("guest_wishlist", [])
+        if id in guest_wishlist:
+            guest_wishlist.remove(id)
+            flash(f"Removed {plant_name} from your wishlist.", "info")
+        else:
+            guest_wishlist.append(id)
+            flash(f"Added {plant_name} to your wishlist!", "success")
+        session["guest_wishlist"] = guest_wishlist
+
+    conn.close()
+    return redirect(request.referrer or url_for("shop"))
+
+
+# ==============================================================================
+# CHECKOUT & ORDERS (USER PURCHASE REQUEST WORKFLOW)
+# ==============================================================================
+@app.route("/checkout", methods=["GET", "POST"])
+@login_required
+def checkout():
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Get cart items
+    cart_items = cur.execute("""
+        SELECT c.quantity, p.id as plant_id, p.name, p.price, p.image, p.stock
+        FROM cart c
+        JOIN plants p ON c.plant_id = p.id
+        WHERE c.user_id = ?
+    """, (session["user_id"],)).fetchall()
+
+    if not cart_items:
+        conn.close()
+        flash("Your cart is empty. Add plants before checking out.", "warning")
+        return redirect(url_for("shop"))
+
+    subtotal = sum(item["price"] * item["quantity"] for item in cart_items)
+    shipping_fee = 0.0 if subtotal >= 499.0 else 50.0
+    total = subtotal + shipping_fee
+
+    user = cur.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
 
     if request.method == "POST":
+        fullname = request.form.get("fullname", "").strip()
+        phone = request.form.get("phone", "").strip()
+        address = request.form.get("address", "").strip()
+        city = request.form.get("city", "").strip()
+        pincode = request.form.get("pincode", "").strip()
+        payment_method = request.form.get("payment_method", "Cash on Delivery").strip()
 
-        fullname = request.form["fullname"]
-        username = request.form["username"]
-        password = request.form["password"]
+        if not fullname or not phone or not address or not city or not pincode:
+            conn.close()
+            flash("Please complete all shipping address fields.", "error")
+            return render_template(
+                "checkout.html",
+                user=user,
+                cart_items=cart_items,
+                subtotal=subtotal,
+                shipping_fee=shipping_fee,
+                total=total
+            )
 
-        cursor.execute("""
-        UPDATE users
-        SET fullname=%s, username=%s, password=%s
-        WHERE email=%s
+        # Generate unique human-readable order number
+        order_date_str = datetime.now().strftime("%Y%m%d")
+        random_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        order_number = f"ORD-{order_date_str}-{random_suffix}"
+
+        # Insert Order with status 'Pending' (waiting for admin to accept!)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute("""
+            INSERT INTO orders (
+                order_number, user_id, user_email, customer_name, customer_phone,
+                shipping_address, city, pincode, payment_method, payment_status,
+                subtotal, shipping_fee, total_amount, order_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?)
         """, (
-            fullname,
-            username,
-            password,
-            session["user"]
+            order_number, session["user_id"], session["user"], fullname, phone,
+            address, city, pincode, payment_method,
+            "Paid" if "Online" in payment_method else "Pending",
+            subtotal, shipping_fee, total, now_str, now_str
         ))
+        order_id = cur.lastrowid
+
+        # Insert Order Items & decrease stock
+        for item in cart_items:
+            item_subtotal = item["price"] * item["quantity"]
+            cur.execute("""
+                INSERT INTO order_items (
+                    order_id, plant_id, plant_name, plant_image, price, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                order_id, item["plant_id"], item["name"], item["image"],
+                item["price"], item["quantity"], item_subtotal
+            ))
+            # Deduct stock
+            cur.execute("UPDATE plants SET stock = MAX(0, stock - ?) WHERE id = ?", (item["quantity"], item["plant_id"]))
+
+        # Clear cart
+        cur.execute("DELETE FROM cart WHERE user_id = ?", (session["user_id"],))
+
+        # Save default address in user profile
+        cur.execute("""
+            UPDATE users SET fullname = ?, phone = ?, address = ?, city = ?, pincode = ?
+            WHERE id = ?
+        """, (fullname, phone, address, city, pincode, session["user_id"]))
 
         conn.commit()
         conn.close()
 
-        return redirect("/profile")
-
-    cursor.execute(
-        "SELECT * FROM users WHERE email=%s",
-        (session["user"],)
-    )
-
-    user = cursor.fetchone()
+        flash("Plant order placed! Your request is pending nursery admin acceptance.", "success")
+        return redirect(url_for("order_success", order_number=order_number))
 
     conn.close()
-
-    return render_template("edit_profile.html", user=user)
-
-
-
-def create_pdf(plants,title):
-    pdf=BytesIO()
-    doc=SimpleDocTemplate(pdf,pagesize=(595,842),rightMargin=35,leftMargin=35,topMargin=35,bottomMargin=35)
-    s=getSampleStyleSheet()
-    today=date.today().isoformat()
-
-    def st(d,x):
-        if x=="Completed": return x
-        if not d: return "Pending"
-        return "Overdue" if d<today else "Today" if d==today else "Upcoming"
-
-    fields=[
-        ("Plant Name","name"),("Scientific Name","scientific_name"),
-        ("Category","category"),("Water Requirement","water"),
-        ("Sunlight","sunlight"),("Soil","soil"),
-        ("Watering Date","watering_date"),("Watering Status","reminder_status"),
-        ("Fertilizer Date","fertilizer_date"),("Fertilizer Status","fertilizer_status"),
-        ("Health Status","health_status")]
-
-    content=[Paragraph("<b>PLANTCARE HUB</b>",s["Title"]),
-             Paragraph(title,s["Heading2"]),
-             Paragraph(f"<b>Total Plants: {len(plants)}</b>",s["Normal"]),Spacer(1,18)]
-
-    for p in plants:
-        data=[]
-        for label,key in fields:
-            v=p[key]
-            if key=="reminder_status": v=st(p["watering_date"],v)
-            if key=="fertilizer_status": v=st(p["fertilizer_date"],v)
-            data.append([Paragraph(f"<b>{label}</b>",s["Normal"]),Paragraph(str(v),s["Normal"])])
-        t=Table(data,colWidths=[180,340])
-        t.setStyle(TableStyle([
-            ("GRID",(0,0),(-1,-1),.5,colors.lightgrey),
-            ("BACKGROUND",(0,0),(0,-1),colors.whitesmoke),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("LEFTPADDING",(0,0),(-1,-1),8),
-            ("TOPPADDING",(0,0),(-1,-1),7),
-            ("BOTTOMPADDING",(0,0),(-1,-1),7)]))
-        content += [t,Spacer(1,18)]
-
-    doc.build(content)
-    pdf.seek(0)
-    return pdf
-
-
-@app.route("/download-report/<report_type>")
-def download_report(report_type):
-
-    if "user" not in session:
-        return redirect("/login")
-
-    if report_type not in ["all", "water", "fertilizer"]:
-        return redirect("/report")
-
-    conn = psycopg2.connect(
-        DATABASE_URL,
-        cursor_factory=psycopg2.extras.RealDictCursor
+    return render_template(
+        "checkout.html",
+        user=user,
+        cart_items=cart_items,
+        subtotal=subtotal,
+        shipping_fee=shipping_fee,
+        total=total
     )
 
-    cursor = conn.cursor()
-    today = date.today().isoformat()
 
-    # ================= ALL PLANTS =================
+@app.route("/order-success/<order_number>")
+@login_required
+def order_success(order_number):
+    conn = get_db()
+    cur = conn.cursor()
 
-    if report_type == "all":
+    order = cur.execute(
+        "SELECT * FROM orders WHERE order_number = ? AND user_id = ?",
+        (order_number, session["user_id"])
+    ).fetchone()
 
-        title = "All Plants Report"
-        filename = "PlantCare_Hub_All_Plants_Report.pdf"
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("home"))
 
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            ORDER BY id DESC
-        """, (session["user"],))
-
-        plants = cursor.fetchall()
-
-    # ================= WATER REPORT =================
-
-    elif report_type == "water":
-
-        title = "Need Water Report"
-        filename = "PlantCare_Hub_Need_Water_Report.pdf"
-
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            AND watering_date < %s
-            AND reminder_status != 'Completed'
-            ORDER BY watering_date
-        """, (session["user"], today))
-
-        plants = cursor.fetchall()
-
-    # ================= FERTILIZER REPORT =================
-
-    else:
-
-        title = "Need Fertilizer Report"
-        filename = "PlantCare_Hub_Need_Fertilizer_Report.pdf"
-
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            AND fertilizer_date < %s
-            AND fertilizer_status != 'Completed'
-            ORDER BY fertilizer_date
-        """, (session["user"], today))
-
-        plants = cursor.fetchall()
-
+    order_items = cur.execute(
+        "SELECT * FROM order_items WHERE order_id = ?",
+        (order["id"],)
+    ).fetchall()
     conn.close()
 
-    pdf = create_pdf(plants, title)
+    return render_template("order_success.html", order=order, order_items=order_items)
 
-    return send_file(
-        pdf,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/pdf"
-    )
 
-@app.route("/report-view/<report_type>")
-def report_view(report_type):
+@app.route("/my-orders")
+@login_required
+def my_orders():
+    conn = get_db()
+    cur = conn.cursor()
 
-    if "user" not in session:
-        return redirect("/login")
+    orders_rows = cur.execute(
+        "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC",
+        (session["user_id"],)
+    ).fetchall()
 
-    if report_type not in ["all", "water", "fertilizer"]:
-        return redirect("/report")
+    orders = []
+    for r in orders_rows:
+        order_dict = dict(r)
+        items = cur.execute(
+            "SELECT * FROM order_items WHERE order_id = ?",
+            (r["id"],)
+        ).fetchall()
+        order_dict["order_items"] = [dict(it) for it in items]
+        orders.append(order_dict)
 
-    conn = psycopg2.connect(
-        DATABASE_URL,
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+    conn.close()
+    return render_template("my_orders.html", orders=orders)
 
-    cursor = conn.cursor()
 
-    today = date.today().isoformat()
+@app.route("/cancel-order/<int:order_id>", methods=["GET", "POST"])
+@login_required
+def cancel_order(order_id):
+    conn = get_db()
+    cur = conn.cursor()
 
-    # ================= ALL PLANTS =================
+    order = cur.execute(
+        "SELECT * FROM orders WHERE id = ? AND user_id = ?",
+        (order_id, session["user_id"])
+    ).fetchone()
 
-    if report_type == "all":
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("my_orders"))
 
-        title = "🌿 All Plants Report"
+    if order["order_status"] != "Pending":
+        conn.close()
+        flash("This order has already been processed and cannot be cancelled directly.", "warning")
+        return redirect(url_for("my_orders"))
 
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            ORDER BY id DESC
-        """, (session["user"],))
+    # Restore inventory stock
+    items = cur.execute("SELECT plant_id, quantity FROM order_items WHERE order_id = ?", (order_id,)).fetchall()
+    for it in items:
+        cur.execute("UPDATE plants SET stock = stock + ? WHERE id = ?", (it["quantity"], it["plant_id"]))
 
-        plants = cursor.fetchall()
+    cur.execute("UPDATE orders SET order_status = 'Cancelled' WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
 
-    # ================= WATER REPORT =================
+    flash("Your order has been cancelled.", "info")
+    return redirect(url_for("my_orders"))
 
-    elif report_type == "water":
 
-        title = "💧 Need Water Report"
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    conn = get_db()
+    cur = conn.cursor()
 
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            AND watering_date < %s
-            AND reminder_status != 'Completed'
-            ORDER BY watering_date
-        """, (session["user"], today))
+    if request.method == "POST":
+        fullname = request.form.get("fullname", "").strip()
+        username = request.form.get("username", "").strip()
+        phone = request.form.get("phone", "").strip()
+        address = request.form.get("address", "").strip()
+        city = request.form.get("city", "").strip()
+        pincode = request.form.get("pincode", "").strip()
 
-        plants = cursor.fetchall()
+        cur.execute("""
+            UPDATE users SET fullname = ?, username = ?, phone = ?, address = ?, city = ?, pincode = ?
+            WHERE id = ?
+        """, (fullname, username, phone, address, city, pincode, session["user_id"]))
+        conn.commit()
 
-    # ================= FERTILIZER REPORT =================
+        session["fullname"] = fullname
+        flash("Profile information updated successfully!", "success")
 
-    else:
-
-        title = "🌱 Need Fertilizer Report"
-
-        cursor.execute("""
-            SELECT *
-            FROM plants
-            WHERE owner_email = %s
-            AND fertilizer_date < %s
-            AND fertilizer_status != 'Completed'
-            ORDER BY fertilizer_date
-        """, (session["user"], today))
-
-        plants = cursor.fetchall()
-
+    user = cur.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    order_count = cur.execute("SELECT COUNT(*) FROM orders WHERE user_id = ?", (session["user_id"],)).fetchone()[0]
+    wishlist_count = cur.execute("SELECT COUNT(*) FROM wishlist WHERE user_id = ?", (session["user_id"],)).fetchone()[0]
     conn.close()
 
     return render_template(
-        "report_view.html",
-        plants=plants,
-        title=title,
-        report_type=report_type
+        "profile.html",
+        user=user,
+        order_count=order_count,
+        wishlist_count=wishlist_count
     )
 
 
-
-
-@app.route("/report")
-def report():
-
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = psycopg2.connect(
-    DATABASE_URL,
-    cursor_factory=psycopg2.extras.RealDictCursor
-    )
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT *
-        FROM plants
-        WHERE owner_email=%s
-        ORDER BY id DESC
-    """, (session["user"],))
-
-    plants = cursor.fetchall()
-
-    conn.close()
-
-    return render_template(
-        "report.html",
-        plants=plants
-    )
-
-
-@app.route("/about")
-def about():
-    return render_template("about.html")
-
-
+# ==============================================================================
+# ADMIN PANEL ROUTES (ADMIN DASHBOARD, PLANTS, ACCEPT ORDERS, SALES, USERS)
+# ==============================================================================
 @app.route("/admin")
-def admin():
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    conn = get_db()
+    cur = conn.cursor()
 
-    access = admin_required()
+    total_revenue_res = cur.execute(
+        "SELECT SUM(total_amount) FROM orders WHERE order_status IN ('Accepted', 'Shipped', 'Delivered')"
+    ).fetchone()[0]
+    total_revenue = total_revenue_res if total_revenue_res else 0.0
 
-    if access:
-        return access
+    total_orders = cur.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+    pending_count = cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Pending'").fetchone()[0]
+    total_plants = cur.execute("SELECT COUNT(*) FROM plants WHERE is_active = 1").fetchone()[0]
+    total_users = cur.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
-    conn = psycopg2.connect(
-        DATABASE_URL,
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+    # Crucial: Fetch pending orders needing admin acceptance!
+    pending_rows = cur.execute(
+        "SELECT * FROM orders WHERE order_status = 'Pending' ORDER BY id DESC"
+    ).fetchall()
+    pending_orders = []
+    for r in pending_rows:
+        o = dict(r)
+        items = cur.execute("SELECT * FROM order_items WHERE order_id = ?", (r["id"],)).fetchall()
+        o["order_items"] = [dict(it) for it in items]
+        pending_orders.append(o)
 
-    cursor = conn.cursor()
-
-    # Users
-    cursor.execute("""
-        SELECT id, fullname, email, username
-        FROM users
-        ORDER BY id DESC
-    """)
-
-    users = cursor.fetchall()
-
-    # Plants
-    cursor.execute("""
-        SELECT id, name, scientific_name, water, sunlight, soil
-        FROM plants
-        ORDER BY id DESC
-    """)
-
-    plants = cursor.fetchall()
-
-    # Total Users
-    cursor.execute("""
-        SELECT COUNT(*) AS count
-        FROM users
-    """)
-
-    total_users = cursor.fetchone()["count"]
-
-    # Total Plants
-    cursor.execute("""
-        SELECT COUNT(*) AS count
-        FROM plants
-    """)
-
-    total_plants = cursor.fetchone()["count"]
+    # Recent orders
+    recent_rows = cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 8").fetchall()
+    recent_orders = [dict(r) for r in recent_rows]
 
     conn.close()
 
     return render_template(
-        "admin.html",
-        users=users,
-        plants=plants,
+        "admin/dashboard.html",
+        total_revenue=total_revenue,
+        total_orders=total_orders,
+        pending_count=pending_count,
+        total_plants=total_plants,
         total_users=total_users,
-        total_plants=total_plants
+        pending_orders=pending_orders,
+        recent_orders=recent_orders
     )
 
 
+@app.route("/admin/plants")
+@admin_required
+def admin_plants():
+    conn = get_db()
+    cur = conn.cursor()
+    plants = cur.execute("SELECT * FROM plants WHERE is_active = 1 ORDER BY id DESC").fetchall()
+    conn.close()
+    return render_template("admin/plants.html", plants=plants)
 
-create_database()
 
+@app.route("/admin/add-plant", methods=["GET", "POST"])
+@admin_required
+def admin_add_plant():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        scientific_name = request.form.get("scientific_name", "").strip()
+        category = request.form.get("category", "Flowering").strip()
+        try:
+            price = max(1.0, float(request.form.get("price", 249.0)))
+        except (ValueError, TypeError):
+            price = 249.0
+
+        try:
+            original_price = max(price, float(request.form.get("original_price", price + 100.0)))
+        except (ValueError, TypeError):
+            original_price = price + 100.0
+
+        try:
+            stock = max(0, int(request.form.get("stock", 20)))
+        except (ValueError, TypeError):
+            stock = 20
+        sunlight = request.form.get("sunlight", "Bright Indirect Sunlight").strip()
+        water = request.form.get("water", "2-3 times per week").strip()
+        soil = request.form.get("soil", "Well-drained rich potting soil").strip()
+        description = request.form.get("description", "").strip()
+        featured = 1 if request.form.get("featured") == "1" else 0
+
+        image_filename = "plantCareimage.jpeg"
+        image_file = request.files.get("image")
+        if image_file and allowed_file(image_file.filename):
+            ext = secure_filename(image_file.filename).rsplit(".", 1)[1].lower()
+            safe_name = f"{int(datetime.now().timestamp())}_{secure_filename(name.replace(' ', '_'))}.{ext}"
+            image_file.save(os.path.join(UPLOAD_FOLDER, safe_name))
+            image_filename = safe_name
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO plants (
+                name, scientific_name, category, price, original_price, stock,
+                sunlight, water, soil, description, image, featured, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """, (
+            name, scientific_name, category, price, original_price, stock,
+            sunlight, water, soil, description, image_filename, featured
+        ))
+        conn.commit()
+        conn.close()
+
+        flash(f"Plant '{name}' has been added to the catalog!", "success")
+        return redirect(url_for("admin_plants"))
+
+    return render_template("admin/add_plant.html")
+
+
+@app.route("/admin/edit-plant/<int:id>", methods=["GET", "POST"])
+@admin_required
+def admin_edit_plant(id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    plant = cur.execute("SELECT * FROM plants WHERE id = ?", (id,)).fetchone()
+    if not plant:
+        conn.close()
+        flash("Plant not found.", "error")
+        return redirect(url_for("admin_plants"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        scientific_name = request.form.get("scientific_name", "").strip()
+        category = request.form.get("category", "Flowering").strip()
+        try:
+            price = max(1.0, float(request.form.get("price", plant["price"])))
+        except (ValueError, TypeError):
+            price = float(plant["price"])
+
+        try:
+            original_price = max(price, float(request.form.get("original_price", plant["original_price"] or price)))
+        except (ValueError, TypeError):
+            original_price = float(plant["original_price"] or price)
+
+        try:
+            stock = max(0, int(request.form.get("stock", plant["stock"])))
+        except (ValueError, TypeError):
+            stock = int(plant["stock"])
+        sunlight = request.form.get("sunlight", "").strip()
+        water = request.form.get("water", "").strip()
+        soil = request.form.get("soil", "").strip()
+        description = request.form.get("description", "").strip()
+        featured = 1 if request.form.get("featured") == "1" else 0
+
+        image_filename = plant["image"]
+        image_file = request.files.get("image")
+        if image_file and allowed_file(image_file.filename):
+            ext = secure_filename(image_file.filename).rsplit(".", 1)[1].lower()
+            safe_name = f"{int(datetime.now().timestamp())}_{secure_filename(name.replace(' ', '_'))}.{ext}"
+            image_file.save(os.path.join(UPLOAD_FOLDER, safe_name))
+            image_filename = safe_name
+
+        cur.execute("""
+            UPDATE plants SET
+                name = ?, scientific_name = ?, category = ?, price = ?, original_price = ?,
+                stock = ?, sunlight = ?, water = ?, soil = ?, description = ?,
+                image = ?, featured = ?
+            WHERE id = ?
+        """, (
+            name, scientific_name, category, price, original_price,
+            stock, sunlight, water, soil, description,
+            image_filename, featured, id
+        ))
+        conn.commit()
+        conn.close()
+
+        flash(f"Updated '{name}' details successfully!", "success")
+        return redirect(url_for("admin_plants"))
+
+    conn.close()
+    return render_template("admin/edit_plant.html", plant=plant)
+
+
+@app.route("/admin/delete-plant/<int:id>", methods=["GET", "POST"])
+@admin_required
+def admin_delete_plant(id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM plants WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+
+    flash("Plant removed from store catalog.", "info")
+    return redirect(url_for("admin_plants"))
+
+
+@app.route("/admin/orders")
+@admin_required
+def admin_orders():
+    status_filter = request.args.get("status", "").strip()
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    counts = {
+        "all": cur.execute("SELECT COUNT(*) FROM orders").fetchone()[0],
+        "pending": cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Pending'").fetchone()[0],
+        "accepted": cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Accepted'").fetchone()[0],
+        "shipped": cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Shipped'").fetchone()[0],
+        "delivered": cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Delivered'").fetchone()[0],
+        "rejected": cur.execute("SELECT COUNT(*) FROM orders WHERE order_status = 'Rejected'").fetchone()[0],
+    }
+
+    if status_filter:
+        order_rows = cur.execute(
+            "SELECT * FROM orders WHERE order_status = ? ORDER BY id DESC",
+            (status_filter,)
+        ).fetchall()
+    else:
+        order_rows = cur.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
+
+    orders = []
+    for r in order_rows:
+        o = dict(r)
+        items = cur.execute("SELECT * FROM order_items WHERE order_id = ?", (r["id"],)).fetchall()
+        o["order_items"] = [dict(it) for it in items]
+        orders.append(o)
+
+    conn.close()
+
+    return render_template(
+        "admin/orders.html",
+        orders=orders,
+        current_status=status_filter,
+        counts=counts
+    )
+
+
+# CRUCIAL: Admin Acceptance Route for Customer Purchase Requests
+@app.route("/admin/order/<int:order_id>/accept", methods=["GET", "POST"])
+@admin_required
+def admin_accept_order(order_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    order = cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("admin_orders"))
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "UPDATE orders SET order_status = 'Accepted', updated_at = ? WHERE id = ?",
+        (now_str, order_id)
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Purchase request for {order['order_number']} has been ACCEPTED by Admin! 🌿", "success")
+    return redirect(request.referrer or url_for("admin_orders"))
+
+
+# Admin Rejection Route
+@app.route("/admin/order/<int:order_id>/reject", methods=["GET", "POST"])
+@admin_required
+def admin_reject_order(order_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    order = cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("admin_orders"))
+
+    # Restore inventory stock if rejected from Pending or Accepted
+    if order["order_status"] in ("Pending", "Accepted"):
+        items = cur.execute("SELECT plant_id, quantity FROM order_items WHERE order_id = ?", (order_id,)).fetchall()
+        for it in items:
+            cur.execute("UPDATE plants SET stock = stock + ? WHERE id = ?", (it["quantity"], it["plant_id"]))
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "UPDATE orders SET order_status = 'Rejected', updated_at = ? WHERE id = ?",
+        (now_str, order_id)
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Order {order['order_number']} has been rejected.", "info")
+    return redirect(request.referrer or url_for("admin_orders"))
+
+
+# General Status update (Shipped, Delivered, etc.)
+@app.route("/admin/order/<int:order_id>/update-status", methods=["POST"])
+@admin_required
+def admin_update_order_status(order_id):
+    new_status = request.form.get("status", "").strip()
+    if not new_status:
+        return redirect(request.referrer or url_for("admin_orders"))
+
+    conn = get_db()
+    cur = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "UPDATE orders SET order_status = ?, updated_at = ? WHERE id = ?",
+        (new_status, now_str, order_id)
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Order status updated to '{new_status}'.", "success")
+    return redirect(request.referrer or url_for("admin_orders"))
+
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    conn = get_db()
+    cur = conn.cursor()
+
+    users_rows = cur.execute("""
+        SELECT u.*, COUNT(o.id) as order_count
+        FROM users u
+        LEFT JOIN orders o ON u.id = o.user_id
+        GROUP BY u.id
+        ORDER BY u.id DESC
+    """).fetchall()
+
+    users = [dict(u) for u in users_rows]
+    conn.close()
+
+    return render_template("admin/users.html", users=users)
+
+
+def get_sales_report_data(selected_date="all"):
+    """
+    Fetches detailed purchase records: customer name, email, plant name,
+    plant price, quantity, item total, daily total plants sold, and daily total revenue.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 1. Daily Aggregates (Day's total plants sold & Day's total revenue)
+    daily_stats_query = """
+        SELECT 
+            SUBSTR(o.created_at, 1, 10) as order_date,
+            SUM(oi.quantity) as plants_sold,
+            SUM(oi.subtotal) as daily_revenue
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.order_status != 'Cancelled'
+        GROUP BY SUBSTR(o.created_at, 1, 10)
+    """
+    daily_stats_rows = cur.execute(daily_stats_query).fetchall()
+    daily_stats_map = {
+        r["order_date"]: {
+            "plants_sold": int(r["plants_sold"] or 0),
+            "daily_revenue": float(r["daily_revenue"] or 0.0)
+        }
+        for r in daily_stats_rows
+    }
+
+    available_dates = sorted(list(daily_stats_map.keys()), reverse=True)
+
+    # 2. Detailed Purchase Items
+    query = """
+        SELECT 
+            SUBSTR(o.created_at, 1, 10) as order_date,
+            o.created_at,
+            o.order_number,
+            o.customer_name,
+            o.user_email,
+            o.customer_phone,
+            o.order_status,
+            o.payment_method,
+            oi.plant_name,
+            oi.price as plant_price,
+            oi.quantity,
+            oi.subtotal as item_total
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.order_status != 'Cancelled'
+    """
+    params = []
+    if selected_date and selected_date != "all":
+        query += " AND SUBSTR(o.created_at, 1, 10) = ?"
+        params.append(selected_date)
+
+    query += " ORDER BY o.created_at DESC, o.id DESC"
+    purchases_rows = cur.execute(query, params).fetchall()
+
+    purchases = []
+    total_qty_filtered = 0
+    total_rev_filtered = 0.0
+
+    for r in purchases_rows:
+        item = dict(r)
+        d = item["order_date"]
+        # Attach day's aggregate stats to each purchase row
+        day_stat = daily_stats_map.get(d, {"plants_sold": 0, "daily_revenue": 0.0})
+        item["day_plants_sold"] = day_stat["plants_sold"]
+        item["day_revenue"] = day_stat["daily_revenue"]
+        purchases.append(item)
+        total_qty_filtered += item["quantity"]
+        total_rev_filtered += item["item_total"]
+
+    conn.close()
+    return purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered
+
+
+@app.route("/admin/sales")
+@admin_required
+def admin_sales():
+    conn = get_db()
+    cur = conn.cursor()
+
+    total_sales_res = cur.execute(
+        "SELECT SUM(total_amount) FROM orders WHERE order_status IN ('Accepted', 'Shipped', 'Delivered')"
+    ).fetchone()[0]
+    total_sales = total_sales_res if total_sales_res else 0.0
+
+    completed_orders_count = cur.execute(
+        "SELECT COUNT(*) FROM orders WHERE order_status IN ('Accepted', 'Shipped', 'Delivered')"
+    ).fetchone()[0]
+
+    pending_rev_res = cur.execute(
+        "SELECT SUM(total_amount) FROM orders WHERE order_status = 'Pending'"
+    ).fetchone()[0]
+    pending_revenue = pending_rev_res if pending_rev_res else 0.0
+
+    pending_orders_count = cur.execute(
+        "SELECT COUNT(*) FROM orders WHERE order_status = 'Pending'"
+    ).fetchone()[0]
+
+    avg_order_value = (total_sales / completed_orders_count) if completed_orders_count > 0 else 0.0
+
+    # Top selling plants
+    top_plants_rows = cur.execute("""
+        SELECT oi.plant_name, SUM(oi.quantity) as total_qty, SUM(oi.subtotal) as total_sales
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.order_status IN ('Accepted', 'Shipped', 'Delivered')
+        GROUP BY oi.plant_name
+        ORDER BY total_qty DESC
+        LIMIT 6
+    """).fetchall()
+    top_plants = [dict(tp) for tp in top_plants_rows]
+
+    # Order status distribution
+    status_counts_rows = cur.execute(
+        "SELECT order_status, COUNT(*) as cnt FROM orders GROUP BY order_status"
+    ).fetchall()
+    status_counts = {r["order_status"]: r["cnt"] for r in status_counts_rows}
+
+    conn.close()
+
+    # Detailed Customer Purchases Report & Daily Stats
+    selected_date = request.args.get("date", "all").strip()
+    purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered = get_sales_report_data(selected_date)
+
+    return render_template(
+        "admin/sales.html",
+        total_sales=total_sales,
+        completed_orders_count=completed_orders_count,
+        pending_revenue=pending_revenue,
+        pending_orders_count=pending_orders_count,
+        avg_order_value=avg_order_value,
+        top_plants=top_plants,
+        status_counts=status_counts,
+        purchases=purchases,
+        daily_stats_map=daily_stats_map,
+        available_dates=available_dates,
+        selected_date=selected_date,
+        total_qty_filtered=total_qty_filtered,
+        total_rev_filtered=total_rev_filtered
+    )
+
+
+@app.route("/admin/download-report")
+@admin_required
+def admin_download_report():
+    """
+    Generates and downloads a CSV Report of all customer plant purchases:
+    Customer Name, Email, Phone, Plant Name, Unit Price, Quantity, Item Total,
+    Day's Total Plants Sold, Day's Total Revenue, and Order Status.
+    """
+    selected_date = request.args.get("date", "all").strip()
+    purchases, daily_stats_map, available_dates, total_qty, total_rev = get_sales_report_data(selected_date)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Report Header Info
+    filter_label = f"Date: {selected_date}" if selected_date and selected_date != "all" else "All Dates"
+    writer.writerow(["PlantCare Hub - Customer Purchases & Daily Sales Report"])
+    writer.writerow([f"Generated On: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([f"Report Filter: {filter_label}"])
+    writer.writerow([])
+
+    # Table Columns
+    writer.writerow([
+        "Order Date",
+        "Order Reference",
+        "Customer Name",
+        "Customer Email",
+        "Customer Phone",
+        "Plant Name",
+        "Plant Unit Price (INR)",
+        "Quantity Purchased",
+        "Item Total (INR)",
+        "Day's Total Plants Sold",
+        "Day's Total Revenue (INR)",
+        "Order Status",
+        "Payment Method"
+    ])
+
+    for p in purchases:
+        writer.writerow([
+            p["order_date"],
+            p["order_number"],
+            p["customer_name"],
+            p["user_email"],
+            p["customer_phone"],
+            p["plant_name"],
+            f"{p['plant_price']:.2f}",
+            p["quantity"],
+            f"{p['item_total']:.2f}",
+            p["day_plants_sold"],
+            f"{p['day_revenue']:.2f}",
+            p["order_status"],
+            p.get("payment_method", "N/A")
+        ])
+
+    # Summary Row
+    writer.writerow([])
+    writer.writerow([
+        "TOTAL SUMMARY",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        f"Total Plants Sold: {total_qty}",
+        f"Total Revenue: INR {total_rev:.2f}",
+        "",
+        "",
+        "",
+        ""
+    ])
+
+    # Convert to UTF-8 with BOM for Excel compatibility on Windows
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+
+    filename_date = selected_date if selected_date and selected_date != "all" else "all_dates"
+    filename = f"plantcare_sales_report_{filename_date}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    response = make_response(csv_bytes)
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
+    return response
+
+
+# ==============================================================================
+# MAIN ENTRYPOINT
+# ==============================================================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5000)

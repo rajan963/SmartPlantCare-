@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Orders - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/orders.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-boxes-packing" style="color:#15803d;"></i> Customer Purchase Requests & Orders</h2>
+        <p>Review customer plant purchase requests, accept or decline orders, and update shipping progress</p>
+    </div>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}" class="active"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<!-- Order Status Filter Pills -->
+<div style="display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; align-items:center;">
+    <a href="{{ url_for('admin_orders') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if not current_status %}#15803d; color:#ffffff;{% else %}#ffffff; color:#475569; border:1px solid #e2e8f0;{% endif %}">
+        All Orders ({{ counts.all }})
+    </a>
+    <a href="{{ url_for('admin_orders', status='Pending') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if current_status == 'Pending' %}#eab308; color:#ffffff;{% else %}#fef9c3; color:#854d0e; border:1px solid #fef08a;{% endif %}">
+        <i class="fa-solid fa-bell"></i> Pending Requests ({{ counts.pending }})
+    </a>
+    <a href="{{ url_for('admin_orders', status='Accepted') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if current_status == 'Accepted' %}#16a34a; color:#ffffff;{% else %}#dcfce7; color:#15803d; border:1px solid #bbf7d0;{% endif %}">
+        Accepted ({{ counts.accepted }})
+    </a>
+    <a href="{{ url_for('admin_orders', status='Shipped') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if current_status == 'Shipped' %}#2563eb; color:#ffffff;{% else %}#dbeafe; color:#1e40af; border:1px solid #bfdbfe;{% endif %}">
+        Shipped ({{ counts.shipped }})
+    </a>
+    <a href="{{ url_for('admin_orders', status='Delivered') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if current_status == 'Delivered' %}#047857; color:#ffffff;{% else %}#ecfdf5; color:#047857; border:1px solid #a7f3d0;{% endif %}">
+        Delivered ({{ counts.delivered }})
+    </a>
+    <a href="{{ url_for('admin_orders', status='Rejected') }}" style="padding:8px 16px; border-radius:99px; font-size:0.85rem; font-weight:700; background:{% if current_status == 'Rejected' %}#dc2626; color:#ffffff;{% else %}#fee2e2; color:#991b1b; border:1px solid #fecaca;{% endif %}">
+        Rejected ({{ counts.rejected }})
+    </a>
+</div>
+
+<!-- Orders List -->
+{% if orders %}
+<div style="display:flex; flex-direction:column; gap:20px;">
+    {% for ord in orders %}
+    <div class="order-card" style="border-left: 6px solid {% if ord.order_status == 'Pending' %}#eab308{% elif ord.order_status == 'Accepted' %}#16a34a{% elif ord.order_status == 'Shipped' %}#2563eb{% elif ord.order_status == 'Delivered' %}#047857{% elif ord.order_status == 'Rejected' %}#ef4444{% else %}#94a3b8{% endif %};">
+        <!-- Top header row -->
+        <div class="order-header">
+            <div>
+                <span style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Order Reference</span>
+                <h3 style="font-size:1.2rem; font-weight:800; color:#0f172a;">{{ ord.order_number }}</h3>
+                <span style="font-size:0.82rem; color:#64748b;"><i class="fa-regular fa-calendar"></i> {{ ord.created_at[:16] }}</span>
+            </div>
+
+            <!-- Current Status & Quick Action Buttons -->
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <span class="status-badge status-{{ ord.order_status|lower }}" style="font-size:0.85rem; padding:6px 14px;">
+                    {{ ord.order_status }}
+                </span>
+
+                <!-- Direct Acceptance Buttons for Pending orders -->
+                {% if ord.order_status == 'Pending' %}
+                    <form action="{{ url_for('admin_accept_order', order_id=ord.id) }}" method="POST" style="margin:0;">
+                        <button type="submit" class="btn-action-accept" style="padding:8px 16px; font-size:0.88rem;">
+                            <i class="fa-solid fa-check"></i> Accept Purchase Request
+                        </button>
+                    </form>
+                    <form action="{{ url_for('admin_reject_order', order_id=ord.id) }}" method="POST" onsubmit="return confirm('Decline this purchase request?');" style="margin:0;">
+                        <button type="submit" class="btn-action-reject" style="padding:8px 14px; font-size:0.88rem;">
+                            <i class="fa-solid fa-xmark"></i> Reject
+                        </button>
+                    </form>
+                {% elif ord.order_status == 'Accepted' %}
+                    <form action="{{ url_for('admin_update_order_status', order_id=ord.id) }}" method="POST" style="margin:0;">
+                        <input type="hidden" name="status" value="Shipped">
+                        <button type="submit" class="btn-action-edit" style="background:#2563eb; padding:8px 16px;">
+                            <i class="fa-solid fa-truck-fast"></i> Mark as Shipped
+                        </button>
+                    </form>
+                {% elif ord.order_status == 'Shipped' %}
+                    <form action="{{ url_for('admin_update_order_status', order_id=ord.id) }}" method="POST" style="margin:0;">
+                        <input type="hidden" name="status" value="Delivered">
+                        <button type="submit" class="btn-action-edit" style="background:#047857; padding:8px 16px;">
+                            <i class="fa-solid fa-box-open"></i> Mark as Delivered
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Middle: Two Columns (Customer Details & Ordered Items) -->
+        <div style="display:grid; grid-template-columns: 1fr 1.4fr; gap:24px; margin-bottom:16px;">
+            <!-- Customer Shipping Info -->
+            <div style="background:#f8fafc; padding:16px; border-radius:10px; border:1px solid #e2e8f0; font-size:0.88rem;">
+                <h4 style="font-size:0.95rem; font-weight:800; margin-bottom:8px; color:#1e293b;">
+                    <i class="fa-solid fa-user" style="color:#15803d; margin-right:6px;"></i> Customer Information
+                </h4>
+                <div style="margin-bottom:4px;"><strong>{{ ord.customer_name }}</strong></div>
+                <div style="color:#475569; margin-bottom:4px;"><i class="fa-solid fa-phone"></i> {{ ord.customer_phone }}</div>
+                <div style="color:#475569; margin-bottom:4px;"><i class="fa-solid fa-envelope"></i> {{ ord.user_email }}</div>
+                <div style="margin-top:8px; padding-top:8px; border-top:1px solid #e2e8f0; color:#334155;">
+                    <i class="fa-solid fa-location-dot"></i> {{ ord.shipping_address }}, {{ ord.city }} - {{ ord.pincode }}
+                </div>
+            </div>
+
+            <!-- Ordered Plants List -->
+            <div>
+                <h4 style="font-size:0.95rem; font-weight:800; margin-bottom:8px; color:#1e293b;">
+                    <i class="fa-solid fa-seedling" style="color:#15803d; margin-right:6px;"></i> Ordered Plants ({{ ord.order_items|length }})
+                </h4>
+                <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
+                    {% for it in ord.order_items %}
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px; border-bottom:1px solid #f1f5f9;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div style="width:36px; height:36px; border-radius:6px; overflow:hidden; background:#f1f5f9;">
+                                {% if it.plant_image %}
+                                    <img src="{{ url_for('static', filename='uploads/' + it.plant_image) }}" alt="{{ it.plant_name }}" style="width:100%; height:100%; object-fit:cover;">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ it.plant_name }}" style="width:100%; height:100%; object-fit:cover;">
+                                {% endif %}
+                            </div>
+                            <div>
+                                <span style="font-weight:700; font-size:0.9rem;">{{ it.plant_name }}</span>
+                                <span style="font-size:0.8rem; color:#64748b; margin-left:6px;">Qty: {{ it.quantity }} × ₹{{ "%.0f"|format(it.price) }}</span>
+                            </div>
+                        </div>
+                        <div style="font-weight:700; font-size:0.9rem;">
+                            ₹{{ "%.0f"|format(it.subtotal) }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom bar: Payment info, status changer -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding-top:14px; border-top:1px solid #f1f5f9; background:#fff;">
+            <div style="font-size:0.88rem;">
+                Payment: <strong>{{ ord.payment_method }}</strong> | Status: <strong>{{ ord.payment_status }}</strong>
+                <span style="margin-left:14px; font-size:1.15rem; font-weight:800; color:#15803d;">
+                    Total: ₹{{ "%.0f"|format(ord.total_amount) }}
+                </span>
+            </div>
+
+            <!-- Manual Status Selector -->
+            <form action="{{ url_for('admin_update_order_status', order_id=ord.id) }}" method="POST" style="display:flex; align-items:center; gap:8px; margin:0;">
+                <label style="font-size:0.82rem; font-weight:700; color:#475569;">Update Status:</label>
+                <select name="status" class="form-control" style="width:140px; padding:6px 10px; font-size:0.85rem;">
+                    <option value="Pending" {% if ord.order_status == 'Pending' %}selected{% endif %}>Pending</option>
+                    <option value="Accepted" {% if ord.order_status == 'Accepted' %}selected{% endif %}>Accepted</option>
+                    <option value="Shipped" {% if ord.order_status == 'Shipped' %}selected{% endif %}>Shipped</option>
+                    <option value="Delivered" {% if ord.order_status == 'Delivered' %}selected{% endif %}>Delivered</option>
+                    <option value="Rejected" {% if ord.order_status == 'Rejected' %}selected{% endif %}>Rejected</option>
+                    <option value="Cancelled" {% if ord.order_status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+                <button type="submit" class="btn-primary" style="padding:6px 12px; font-size:0.82rem;">Update</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:60px 20px; text-align:center;">
+    <div style="font-size:3rem; color:#cbd5e1; margin-bottom:12px;"><i class="fa-solid fa-boxes-packing"></i></div>
+    <h3 style="font-size:1.3rem; font-weight:800; color:#334155; margin-bottom:6px;">No Orders in this Status</h3>
+    <p style="color:#64748b; font-size:0.95rem;">There are no customer orders matching the selected filter criteria.</p>
+</div>
+{% endif %}
+{% endblock %}

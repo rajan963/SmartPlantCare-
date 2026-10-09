@@ -1,31 +1,35 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>Plant Categories</title>
-<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
 
-<h1>🌿 Plant Categories</h1>
+{% block title %}Plant Categories - PlantCare Hub Online Nursery{% endblock %}
 
-{% if categories %}
-<table border="1" cellpadding="10">
-<tr><th>Category</th><th>Total Plants</th></tr>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/categories.css') }}">
+{% endblock %}
 
-{% for category in categories %}
-<tr>
-<td><a href="/category/{{ category['category'] }}">{{ category["category"] }}</a></td>
-<td>{{ category["total"] }}</td>
-</tr>
-{% endfor %}
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>All Plant Categories</h2>
+        <p>Explore our carefully categorized nursery collections designed for gardens, homes, and offices</p>
+    </div>
+</div>
 
-</table>
-{% else %}
-<p>No Categories Found.</p>
-{% endif %}
-
-<br>
-<a href="/dashboard"><button>⬅ Back to Dashboard</button></a>
-
-</body>
-</html>
+<div class="categories-page-grid">
+    {% for cat in categories_data %}
+    <div class="category-feature-card">
+        <div>
+            <div class="category-icon-lg">{{ cat.icon }}</div>
+            <h3 class="category-feature-title">{{ cat.name }} Plants</h3>
+            <p class="category-feature-desc">{{ cat.desc }}</p>
+        </div>
+        
+        <div class="category-card-footer">
+            <span class="category-count-badge">{{ cat.count }} Varieties in Store</span>
+            <a href="{{ url_for('shop', category=cat.name) }}" class="btn-primary" style="padding:8px 18px; font-size:0.85rem;">
+                Browse <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

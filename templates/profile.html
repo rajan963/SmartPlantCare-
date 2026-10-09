@@ -1,46 +1,104 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>My Profile | PlantCare Hub</title>
-<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
-<style>
-body{
- margin:0;min-height:100vh;font-family:Arial;color:white;
- background:linear-gradient(#03180dcc,#03180df2),url("/static/uploads/plantCareimage.jpeg") center/cover fixed
-}
-.profile{
- max-width:800px;margin:70px auto;padding:35px;background:#0b2118dd;
- border:1px solid #ffffff22;border-radius:22px;backdrop-filter:blur(15px);
- box-shadow:0 20px 50px #0008
-}
-h1{margin-top:0;color:#19ff69;font-size:35px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px 0}
-.box{padding:20px;border-radius:14px;background:#ffffff0b;border:1px solid #ffffff18}
-.box small{color:#91a69c;display:block;margin-bottom:8px}
-.box strong{font-size:17px}
-.btn{
- display:inline-block;padding:14px 22px;margin-right:10px;border-radius:10px;
- text-decoration:none;font-weight:bold;background:#19ff69;color:#03150b
-}
-.back{background:#ffffff12;color:white;border:1px solid #ffffff22}
-</style>
-</head>
-<body>
+{% extends "base.html" %}
 
-<div class="profile">
-<h1>👤 My Profile</h1>
-<p>Manage your PlantCare Hub account</p>
+{% block title %}My Profile - PlantCare Hub{% endblock %}
 
-<div class="grid">
-<div class="box"><small>FULL NAME</small><strong>{{ user["fullname"] }}</strong></div>
-<div class="box"><small>USERNAME</small><strong>{{ user["username"] }}</strong></div>
-<div class="box"><small>EMAIL</small><strong>{{ user["email"] }}</strong></div>
-<div class="box"><small>PASSWORD</small><strong>••••••••</strong></div>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>Customer Profile</h2>
+        <p>Manage your account information and default delivery address</p>
+    </div>
 </div>
 
-<a href="/edit_profile" class="btn">✏️ Edit Profile</a>
-<a href="/dashboard" class="btn back">← Dashboard</a>
-</div>
+<div class="profile-layout">
+    <!-- Profile Card Summary -->
+    <div class="profile-sidebar-card">
+        <div class="profile-avatar">
+            {{ user.fullname[0] if user.fullname else 'U' }}
+        </div>
+        <h3 style="font-size:1.2rem; font-weight:800; color:#0f172a; margin-bottom:4px;">{{ user.fullname or 'User' }}</h3>
+        <p style="font-size:0.85rem; color:#64748b; margin-bottom:16px;">{{ user.email }}</p>
 
-</body>
-</html>
+        {% if user.is_admin %}
+            <span class="admin-tag" style="margin-bottom:16px;"><i class="fa-solid fa-shield-halved"></i> Store Administrator</span>
+        {% endif %}
+
+        <div class="profile-stats-grid">
+            <div class="profile-stat-box">
+                <span class="profile-stat-val">{{ order_count }}</span>
+                <span class="profile-stat-lbl">Orders</span>
+            </div>
+            <div class="profile-stat-box">
+                <span class="profile-stat-val">{{ wishlist_count }}</span>
+                <span class="profile-stat-lbl">Wishlist</span>
+            </div>
+        </div>
+
+        <div style="margin-top:20px; display:flex; flex-direction:column; gap:8px;">
+            <a href="{{ url_for('my_orders') }}" class="btn-primary" style="padding:10px; justify-content:center; font-size:0.9rem;">
+                <i class="fa-solid fa-box-open"></i> My Orders
+            </a>
+            {% if user.is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn-outline-light" style="padding:10px; justify-content:center; font-size:0.9rem; color:#15803d; border-color:#bbf7d0;">
+                <i class="fa-solid fa-gauge-high"></i> Admin Dashboard
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Edit Profile Form -->
+    <div class="profile-edit-card">
+        <h3 style="font-size:1.3rem; font-weight:800; margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #e2e8f0;">
+            Edit Account & Delivery Info
+        </h3>
+
+        <form action="{{ url_for('profile') }}" method="POST">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="fullname">Full Name *</label>
+                    <input type="text" id="fullname" name="fullname" class="form-control" required value="{{ user.fullname or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-control" value="{{ user.username or '' }}">
+                </div>
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-control" value="{{ user.email or '' }}" readonly style="background:#f8fafc;">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" class="form-control" value="{{ user.phone or '' }}" placeholder="Mobile number">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="address">Default Shipping Address</label>
+                <textarea id="address" name="address" rows="3" class="form-control" placeholder="House/Flat number, street address">{{ user.address or '' }}</textarea>
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="city">City / District</label>
+                    <input type="text" id="city" name="city" class="form-control" value="{{ user.city or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="pincode">Pincode</label>
+                    <input type="text" id="pincode" name="pincode" class="form-control" value="{{ user.pincode or '' }}">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary" style="margin-top:12px;">
+                <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

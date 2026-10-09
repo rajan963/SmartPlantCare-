@@ -1,0 +1,81 @@
+/* ==========================================================================
+   PlantCare Hub - Customer Profile Stylesheet (profile.css)
+   Dedicated styles for user profile overview, avatar badge, order & wishlist
+   counters, and account information & shipping address editor.
+   ========================================================================== */
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 32px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.profile-sidebar-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+  height: fit-content;
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #15803d, #22c55e);
+  color: #ffffff;
+  font-size: 2rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  box-shadow: 0 4px 12px rgba(21, 128, 61, 0.25);
+}
+
+.profile-stats-grid {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.profile-stat-box {
+  background: var(--bg-main);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.profile-stat-val {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--primary);
+  display: block;
+}
+
+.profile-stat-lbl {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.profile-edit-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 860px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Shop Plants - PlantCare Hub Online Nursery{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shop.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>Plant Catalog & Shop</h2>
+        <p>Explore our carefully nurtured, nursery-fresh plants (Showing {{ plants|length }} plants)</p>
+    </div>
+</div>
+
+<div class="shop-layout">
+    <!-- Filter Sidebar -->
+    <aside class="filter-sidebar">
+        <h3><i class="fa-solid fa-filter"></i> Filter Plants</h3>
+
+        <form action="{{ url_for('shop') }}" method="GET" id="filterForm">
+            <!-- Search Query Input -->
+            <div class="filter-group">
+                <h4>Search</h4>
+                <div style="display:flex; gap:6px;">
+                    <input type="text" name="search" value="{{ search or '' }}" placeholder="Search by name..." class="form-control" style="padding:8px 12px; font-size:0.9rem;">
+                </div>
+            </div>
+
+            <!-- Category Filter -->
+            <div class="filter-group">
+                <h4>Categories</h4>
+                <ul class="filter-list">
+                    <li>
+                        <a href="{{ url_for('shop', search=search, sort=sort) }}" class="{% if not current_category %}active{% endif %}">
+                            <span>All Plants</span>
+                            <i class="fa-solid fa-angle-right"></i>
+                        </a>
+                    </li>
+                    {% for cat in all_categories %}
+                    <li>
+                        <a href="{{ url_for('shop', category=cat.category, search=search, sort=sort) }}" class="{% if current_category == cat.category %}active{% endif %}">
+                            <span>{{ cat.category }}</span>
+                            <span style="font-size:0.75rem; background:#f1f5f9; padding:2px 8px; border-radius:99px;">{{ cat.count }}</span>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <input type="hidden" name="category" value="{{ current_category or '' }}">
+            </div>
+
+            <!-- Price Sorting -->
+            <div class="filter-group">
+                <h4>Sort By</h4>
+                <select name="sort" class="form-control" onchange="this.form.submit()" style="font-size:0.9rem; padding:8px 10px;">
+                    <option value="newest" {% if sort == 'newest' %}selected{% endif %}>Newest Additions</option>
+                    <option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>Price: Low to High</option>
+                    <option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>Price: High to Low</option>
+                    <option value="name_asc" {% if sort == 'name_asc' %}selected{% endif %}>Name: A to Z</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-primary" style="width:100%; justify-content:center; padding:10px; font-size:0.9rem;">
+                Apply Filters
+            </button>
+
+            {% if current_category or search or sort != 'newest' %}
+                <a href="{{ url_for('shop') }}" style="display:block; text-align:center; margin-top:10px; font-size:0.85rem; color:#ef4444; font-weight:600;">
+                    <i class="fa-solid fa-rotate-left"></i> Reset All Filters
+                </a>
+            {% endif %}
+        </form>
+    </aside>
+
+    <!-- Main Plants Products Area -->
+    <div>
+        <!-- Top status bar -->
+        <div class="shop-topbar">
+            <div style="font-size:0.95rem; font-weight:600; color:#475569;">
+                {% if current_category %}
+                    Category: <strong style="color:#15803d;">{{ current_category }}</strong>
+                {% elif search %}
+                    Search results for: <strong style="color:#15803d;">"{{ search }}"</strong>
+                {% else %}
+                    Showing all fresh nursery plants
+                {% endif %}
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:0.85rem; color:#64748b;">Sort:</span>
+                <span style="font-weight:700; font-size:0.85rem; color:#0f172a;">
+                    {% if sort == 'price_asc' %}Price: Low to High
+                    {% elif sort == 'price_desc' %}Price: High to Low
+                    {% elif sort == 'name_asc' %}Alphabetical (A-Z)
+                    {% else %}Newest First{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <!-- Plants Grid -->
+        <div class="plants-grid">
+            {% for plant in plants %}
+            <div class="plant-card">
+                <div class="plant-thumb">
+                    <a href="{{ url_for('plant_details', id=plant.id) }}" style="display:block; width:100%; height:100%;">
+                        {% if plant.image %}
+                            <img src="{{ url_for('static', filename='uploads/' + plant.image) }}" alt="{{ plant.name }}" loading="lazy">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ plant.name }}" loading="lazy">
+                        {% endif %}
+                    </a>
+                    <span class="card-badge">{{ plant.category }}</span>
+                    <a href="{{ url_for('toggle_wishlist', id=plant.id) }}" class="btn-wishlist {% if plant.id in wishlist_ids %}active{% endif %}" title="Add to Wishlist">
+                        <i class="fa-{% if plant.id in wishlist_ids %}solid{% else %}regular{% endif %} fa-heart"></i>
+                    </a>
+                </div>
+
+                <div class="plant-info">
+                    <span class="plant-cat-label">{{ plant.category }}</span>
+                    <h3 class="plant-name"><a href="{{ url_for('plant_details', id=plant.id) }}">{{ plant.name }}</a></h3>
+                    <p class="plant-sci-name">{{ plant.scientific_name or 'Botanical species' }}</p>
+
+                    <div class="plant-care-tags">
+                        <span class="care-tag" title="Sunlight"><i class="fa-regular fa-sun"></i> {{ plant.sunlight[:14] if plant.sunlight else 'Bright Sun' }}</span>
+                        <span class="care-tag" title="Watering"><i class="fa-solid fa-droplet"></i> {{ plant.water[:14] if plant.water else 'Regular' }}</span>
+                    </div>
+
+                    <div class="plant-footer">
+                        <div class="price-wrap">
+                            <span class="current-price">₹{{ "%.0f"|format(plant.price) }}</span>
+                            {% if plant.original_price and plant.original_price > plant.price %}
+                                <span class="original_price">₹{{ "%.0f"|format(plant.original_price) }}</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="plant-actions">
+                            <a href="{{ url_for('plant_details', id=plant.id) }}" class="btn-view" title="View Plant Details">
+                                <i class="fa-solid fa-eye"></i> View
+                            </a>
+                            {% if plant.stock > 0 %}
+                                <form action="{{ url_for('add_to_cart', id=plant.id) }}" method="POST" style="margin:0;">
+                                    <input type="hidden" name="quantity" value="1">
+                                    <button type="submit" class="btn-add-cart">
+                                        <i class="fa-solid fa-cart-plus"></i> Add
+                                    </button>
+                                </form>
+                            {% else %}
+                                <span class="out-of-stock-badge">Sold Out</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div style="grid-column: 1/-1; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:60px 20px; text-align:center;">
+                <div style="font-size:3rem; color:#cbd5e1; margin-bottom:12px;"><i class="fa-solid fa-leaf"></i></div>
+                <h3 style="font-size:1.3rem; font-weight:800; color:#334155; margin-bottom:8px;">No Plants Found</h3>
+                <p style="color:#64748b; font-size:0.95rem; margin-bottom:20px;">Try adjusting your search terms or category filters.</p>
+                <a href="{{ url_for('shop') }}" class="btn-primary" style="display:inline-flex;">
+                    Browse All Plants
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

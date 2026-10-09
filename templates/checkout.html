@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - PlantCare Hub{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/checkout.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>Checkout & Delivery Details</h2>
+        <p>Complete your shipping information to place your plant purchase order</p>
+    </div>
+</div>
+
+<form action="{{ url_for('checkout') }}" method="POST">
+    <div class="cart-layout">
+        <!-- Left: Shipping & Payment Form -->
+        <div class="checkout-card">
+            <h3 style="font-size:1.25rem; font-weight:800; margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #e2e8f0;">
+                <i class="fa-solid fa-truck" style="color:#15803d; margin-right:8px;"></i> Shipping Address
+            </h3>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="fullname">Full Name *</label>
+                    <input type="text" id="fullname" name="fullname" class="form-control" required value="{{ user.fullname or '' }}" placeholder="Enter your full name">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number *</label>
+                    <input type="tel" id="phone" name="phone" class="form-control" required value="{{ user.phone or '' }}" placeholder="10-digit mobile number">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address *</label>
+                <input type="email" id="email" name="email" class="form-control" required value="{{ user.email or '' }}" readonly style="background:#f8fafc;">
+            </div>
+
+            <div class="form-group">
+                <label for="address">Delivery Street Address *</label>
+                <textarea id="address" name="address" rows="3" class="form-control" required placeholder="House/Flat number, building, street, area...">{{ user.address or '' }}</textarea>
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="city">City / District *</label>
+                    <input type="text" id="city" name="city" class="form-control" required value="{{ user.city or '' }}" placeholder="e.g. Mumbai, Delhi, Patna">
+                </div>
+                <div class="form-group">
+                    <label for="pincode">Pincode *</label>
+                    <input type="text" id="pincode" name="pincode" class="form-control" required value="{{ user.pincode or '' }}" placeholder="6-digit postal code">
+                </div>
+            </div>
+
+            <h3 style="font-size:1.25rem; font-weight:800; margin:28px 0 16px; padding-bottom:12px; border-bottom:1px solid #e2e8f0;">
+                <i class="fa-solid fa-credit-card" style="color:#15803d; margin-right:8px;"></i> Payment Method
+            </h3>
+
+            <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:24px;">
+                <label style="display:flex; align-items:center; gap:12px; padding:14px; border:2px solid #15803d; border-radius:10px; background:#f0fdf4; cursor:pointer;">
+                    <input type="radio" name="payment_method" value="Cash on Delivery" checked style="accent-color:#15803d;">
+                    <div>
+                        <strong style="color:#0f172a; font-size:0.95rem;">Cash on Delivery (COD)</strong>
+                        <div style="font-size:0.8rem; color:#64748b;">Pay securely with cash or UPI upon plant delivery</div>
+                    </div>
+                </label>
+
+                <label style="display:flex; align-items:center; gap:12px; padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#ffffff; cursor:pointer;">
+                    <input type="radio" name="payment_method" value="UPI / Online Payment" style="accent-color:#15803d;">
+                    <div>
+                        <strong style="color:#0f172a; font-size:0.95rem;">UPI / Net Banking / Card</strong>
+                        <div style="font-size:0.8rem; color:#64748b;">Fast digital payment simulation</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Right: Order Summary -->
+        <div class="summary-card">
+            <h3>Items in Order ({{ cart_items|length }})</h3>
+
+            <div style="max-height:260px; overflow-y:auto; margin-bottom:18px; padding-right:6px;">
+                {% for item in cart_items %}
+                <div style="display:flex; gap:12px; align-items:center; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
+                    <div style="width:50px; height:50px; border-radius:8px; overflow:hidden; flex-shrink:0; background:#f1f5f9;">
+                        {% if item.image %}
+                            <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.name }}" style="width:100%; height:100%; object-fit:cover;">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ item.name }}" style="width:100%; height:100%; object-fit:cover;">
+                        {% endif %}
+                    </div>
+                    <div style="flex:1;">
+                        <h5 style="font-size:0.9rem; font-weight:700; margin-bottom:2px;">{{ item.name }}</h5>
+                        <div style="font-size:0.8rem; color:#64748b;">Qty: {{ item.quantity }} × ₹{{ "%.0f"|format(item.price) }}</div>
+                    </div>
+                    <div style="font-weight:700; font-size:0.92rem; color:#0f172a;">
+                        ₹{{ "%.0f"|format(item.price * item.quantity) }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="summary-line">
+                <span>Subtotal</span>
+                <span style="font-weight:700;">₹{{ "%.0f"|format(subtotal) }}</span>
+            </div>
+
+            <div class="summary-line">
+                <span>Packaging & Shipping</span>
+                <span>
+                    {% if shipping_fee == 0 %}
+                        <strong style="color:#15803d;">FREE</strong>
+                    {% else %}
+                        ₹{{ "%.0f"|format(shipping_fee) }}
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="summary-line total">
+                <span>Total Payable</span>
+                <span style="color:#15803d;">₹{{ "%.0f"|format(total) }}</span>
+            </div>
+
+            <!-- Acceptance Workflow Notice -->
+            <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; font-size:0.82rem; color:#1e40af; margin:16px 0; line-height:1.5;">
+                <i class="fa-solid fa-clock-rotate-left" style="margin-right:4px;"></i> 
+                <strong>Order Process:</strong> Once submitted, your plant order request will be sent to the Nursery Admin for review and acceptance.
+            </div>
+
+            <button type="submit" class="btn-checkout">
+                <i class="fa-solid fa-lock"></i> Place Order Now
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}

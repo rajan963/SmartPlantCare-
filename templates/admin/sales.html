@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Sales & Customer Purchase Reports - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/sales.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-chart-line" style="color:#15803d;"></i> Sales Reports & Analytics</h2>
+        <p>Customer plant purchases, daily sales metrics, revenue reports, and CSV download</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a href="{{ url_for('admin_download_report', date=selected_date) }}" class="btn-primary" style="padding:10px 20px; font-size:0.9rem;">
+            <i class="fa-solid fa-file-arrow-down"></i> Download CSV Report
+        </a>
+        <button onclick="window.print()" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; padding:9px 18px; font-size:0.9rem;">
+            <i class="fa-solid fa-print"></i> Print Report
+        </button>
+    </div>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}" class="active"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<!-- Filter Toolbar -->
+<div class="report-toolbar">
+    <form action="{{ url_for('admin_sales') }}" method="GET" class="report-filter-form">
+        <label for="date_filter" style="font-weight:700; font-size:0.9rem; color:#334155;">
+            <i class="fa-regular fa-calendar" style="color:#15803d;"></i> Filter by Date:
+        </label>
+        <select name="date" id="date_filter" class="form-control" style="width:200px; padding:7px 12px; font-size:0.88rem;" onchange="this.form.submit()">
+            <option value="all" {% if selected_date == 'all' or not selected_date %}selected{% endif %}>All Dates (Lifetime)</option>
+            {% for d in available_dates %}
+                <option value="{{ d }}" {% if selected_date == d %}selected{% endif %}>
+                    {{ d }} ({{ daily_stats_map[d].plants_sold }} plants - ₹{{ "%.0f"|format(daily_stats_map[d].daily_revenue) }})
+                </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-primary" style="padding:7px 16px; font-size:0.85rem;">
+            Filter
+        </button>
+        {% if selected_date and selected_date != 'all' %}
+            <a href="{{ url_for('admin_sales') }}" style="color:#ef4444; font-size:0.85rem; font-weight:600; margin-left:6px;">
+                <i class="fa-solid fa-rotate-left"></i> Reset Filter
+            </a>
+        {% endif %}
+    </form>
+
+    <div class="report-actions">
+        <span style="font-size:0.85rem; color:#64748b;">
+            Showing <strong>{{ purchases|length }}</strong> customer purchase items
+        </span>
+        <a href="{{ url_for('admin_download_report', date=selected_date) }}" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; padding:7px 14px; font-size:0.85rem;">
+            <i class="fa-solid fa-download"></i> Export (.csv)
+        </a>
+    </div>
+</div>
+
+<!-- Metric Cards -->
+<div class="metrics-grid">
+    <div class="metric-card">
+        <h4>Total Sales Revenue</h4>
+        <div class="metric-value" style="color:#15803d;">₹{{ "%.0f"|format(total_sales) }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Accepted & fulfilled orders</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Report Filtered Revenue</h4>
+        <div class="metric-value" style="color:#0f172a;">₹{{ "%.0f"|format(total_rev_filtered) }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">In selected period ({{ selected_date }})</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Report Plants Sold</h4>
+        <div class="metric-value" style="color:#2563eb;">{{ total_qty_filtered }} <span style="font-size:1rem; font-weight:600;">pots</span></div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Units ordered by customers</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Average Order Value</h4>
+        <div class="metric-value">₹{{ "%.0f"|format(avg_order_value) }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Per customer checkout</div>
+    </div>
+</div>
+
+<!-- DETAILED CUSTOMER PURCHASES & DAILY SALES REPORT TABLE -->
+<div class="data-table-card">
+    <div class="table-header-bar">
+        <div>
+            <h3 style="display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-clipboard-list" style="color:#15803d;"></i>
+                Customer Plant Purchases & Daily Sales Report
+            </h3>
+            <p style="font-size:0.82rem; color:#64748b; margin-top:2px;">
+                Customer name, email, purchased plant, unit price, quantity, daily total revenue, and plants sold on that day.
+            </p>
+        </div>
+        <div>
+            <a href="{{ url_for('admin_download_report', date=selected_date) }}" class="btn-primary" style="padding:8px 16px; font-size:0.85rem;">
+                <i class="fa-solid fa-file-csv"></i> Download CSV
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Date & Order</th>
+                    <th>Customer Name</th>
+                    <th>Customer Email</th>
+                    <th>Plant Purchased</th>
+                    <th>Plant Price</th>
+                    <th>Qty</th>
+                    <th>Item Total</th>
+                    <th>Usi Din Ka Total Revenue</th>
+                    <th>Usi Din Ke Sold Plants</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in purchases %}
+                <tr>
+                    <td>
+                        <strong style="color:#0f172a;">{{ p.order_date }}</strong><br>
+                        <span style="font-size:0.75rem; color:#64748b;">{{ p.order_number }}</span>
+                    </td>
+                    <td>
+                        <strong style="color:#0f172a;">{{ p.customer_name }}</strong>
+                        {% if p.customer_phone %}
+                            <div style="font-size:0.75rem; color:#64748b;"><i class="fa-solid fa-phone"></i> {{ p.customer_phone }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="mailto:{{ p.user_email }}" style="color:#2563eb; text-decoration:underline;">
+                            {{ p.user_email }}
+                        </a>
+                    </td>
+                    <td>
+                        <strong style="color:#15803d;">{{ p.plant_name }}</strong>
+                    </td>
+                    <td>
+                        <strong>₹{{ "%.0f"|format(p.plant_price) }}</strong>
+                    </td>
+                    <td>
+                        <span style="font-weight:700; background:#f1f5f9; padding:2px 8px; border-radius:6px;">
+                            {{ p.quantity }}x
+                        </span>
+                    </td>
+                    <td>
+                        <strong style="color:#0f172a; font-size:0.95rem;">₹{{ "%.0f"|format(p.item_total) }}</strong>
+                    </td>
+                    <td>
+                        <span class="day-rev-badge">
+                            <i class="fa-solid fa-indian-rupee-sign"></i> ₹{{ "%.0f"|format(p.day_revenue) }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="day-plant-badge">
+                            <i class="fa-solid fa-seedling"></i> {{ p.day_plants_sold }} Plants
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status-badge status-{{ p.order_status|lower }}">
+                            {{ p.order_status }}
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" style="text-align:center; padding:40px; color:#64748b;">
+                        <div style="font-size:2rem; margin-bottom:8px;"><i class="fa-solid fa-seedling"></i></div>
+                        No customer plant purchase records found for the selected filter.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Two Columns: Top Selling Plants & Order Status Breakdown -->
+<div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:24px; margin-bottom:32px;">
+    <!-- Top Selling Plants -->
+    <div class="data-table-card">
+        <div class="table-header-bar">
+            <h3><i class="fa-solid fa-trophy" style="color:#eab308;"></i> Best-Selling Plant Varieties</h3>
+        </div>
+        <div class="table-responsive">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Plant Name</th>
+                        <th>Units Sold</th>
+                        <th>Gross Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in top_plants %}
+                    <tr>
+                        <td><strong>{{ p.plant_name }}</strong></td>
+                        <td>{{ p.total_qty }} pots</td>
+                        <td><strong style="color:#15803d;">₹{{ "%.0f"|format(p.total_sales) }}</strong></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" style="text-align:center; padding:20px; color:#64748b;">
+                            No plant sales data yet.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Status Breakdown -->
+    <div class="data-table-card">
+        <div class="table-header-bar">
+            <h3><i class="fa-solid fa-chart-pie" style="color:#15803d;"></i> Order Fulfillment Status</h3>
+        </div>
+        <div style="padding:20px;">
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                <span><span class="status-badge status-accepted">Accepted</span> Approved by Admin</span>
+                <strong>{{ status_counts.Accepted or 0 }}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                <span><span class="status-badge status-shipped">Shipped</span> In Transit</span>
+                <strong>{{ status_counts.Shipped or 0 }}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                <span><span class="status-badge status-delivered">Delivered</span> Successfully Delivered</span>
+                <strong>{{ status_counts.Delivered or 0 }}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                <span><span class="status-badge status-pending">Pending</span> Awaiting Admin</span>
+                <strong>{{ status_counts.Pending or 0 }}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0;">
+                <span><span class="status-badge status-rejected">Rejected</span> Declined Orders</span>
+                <strong>{{ status_counts.Rejected or 0 }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

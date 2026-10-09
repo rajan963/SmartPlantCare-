@@ -2,6 +2,5 @@
 .venv/
 __pycache__/
 *.pyc
-database.db 
-database - Copy.db
+database.db
 database_backup.db

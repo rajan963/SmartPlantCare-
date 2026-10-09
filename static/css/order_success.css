@@ -1,0 +1,36 @@
+/* ==========================================================================
+   PlantCare Hub - Order Success Stylesheet (order_success.css)
+   Dedicated styles for the order confirmation page, green animated checkmark
+   icon, reference tracking card, and ordered plants list summary.
+   ========================================================================== */
+
+.order-success-box {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 48px;
+  text-align: center;
+  max-width: 680px;
+  margin: 30px auto;
+  box-shadow: var(--shadow-lg);
+}
+
+.success-check-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-full);
+  background: #dcfce7;
+  color: #15803d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  margin: 0 auto 24px;
+}
+
+@media (max-width: 640px) {
+  .order-success-box {
+    padding: 30px 20px;
+    margin: 20px auto;
+  }
+}

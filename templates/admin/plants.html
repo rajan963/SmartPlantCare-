@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Plants - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/plants.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-seedling" style="color:#15803d;"></i> Plant Catalog Management</h2>
+        <p>View, edit, restock, or remove plants in the nursery store ({{ plants|length }} total plants)</p>
+    </div>
+    <a href="{{ url_for('admin_add_plant') }}" class="btn-primary" style="padding:10px 20px; font-size:0.9rem;">
+        <i class="fa-solid fa-plus"></i> Add New Plant
+    </a>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}" class="active"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<div class="data-table-card">
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th style="width:60px;">Image</th>
+                    <th>Plant Name & Species</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Stock</th>
+                    <th>Featured</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for plant in plants %}
+                <tr>
+                    <td>
+                        <div style="width:48px; height:48px; border-radius:8px; overflow:hidden; background:#f1f5f9;">
+                            {% if plant.image %}
+                                <img src="{{ url_for('static', filename='uploads/' + plant.image) }}" alt="{{ plant.name }}" style="width:100%; height:100%; object-fit:cover;">
+                            {% else %}
+                                <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ plant.name }}" style="width:100%; height:100%; object-fit:cover;">
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <strong><a href="{{ url_for('plant_details', id=plant.id) }}">{{ plant.name }}</a></strong>
+                        <div style="font-size:0.8rem; color:#64748b; font-style:italic;">{{ plant.scientific_name or '-' }}</div>
+                    </td>
+                    <td>
+                        <span style="background:#dcfce7; color:#15803d; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:99px;">
+                            {{ plant.category }}
+                        </span>
+                    </td>
+                    <td>
+                        <strong style="color:#0f172a; font-size:1rem;">₹{{ "%.0f"|format(plant.price) }}</strong>
+                        {% if plant.original_price and plant.original_price > plant.price %}
+                            <div style="font-size:0.75rem; color:#94a3b8; text-decoration:line-through;">₹{{ "%.0f"|format(plant.original_price) }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if plant.stock <= 0 %}
+                            <span style="color:#ef4444; font-weight:700; font-size:0.82rem;"><i class="fa-solid fa-circle-xmark"></i> Out of Stock</span>
+                        {% elif plant.stock <= 5 %}
+                            <span style="color:#f59e0b; font-weight:700; font-size:0.82rem;"><i class="fa-solid fa-triangle-exclamation"></i> Low ({{ plant.stock }})</span>
+                        {% else %}
+                            <span style="color:#15803d; font-weight:700; font-size:0.82rem;"><i class="fa-solid fa-circle-check"></i> {{ plant.stock }} in stock</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if plant.featured %}
+                            <span style="color:#eab308; font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-star"></i> Featured</span>
+                        {% else %}
+                            <span style="color:#94a3b8; font-size:0.82rem;">Standard</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:right;">
+                        <a href="{{ url_for('admin_edit_plant', id=plant.id) }}" class="btn-action-edit" title="Edit Plant">
+                            <i class="fa-solid fa-pen-to-square"></i> Edit
+                        </a>
+                        <form action="{{ url_for('admin_delete_plant', id=plant.id) }}" method="POST" style="display:inline; margin:0;" onsubmit="return confirm('Are you sure you want to delete {{ plant.name }} from the catalog?');">
+                            <button type="submit" class="btn-action-reject" style="padding:6px 10px;" title="Delete Plant">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:40px; color:#64748b;">
+                        No plants available in the catalog yet. Click "Add New Plant" to populate.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

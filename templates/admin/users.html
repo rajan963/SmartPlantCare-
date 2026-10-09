@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Customers - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/users.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-users" style="color:#15803d;"></i> Registered Customers & Users</h2>
+        <p>View registered plant buyers and administrator accounts ({{ users|length }} total accounts)</p>
+    </div>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}" class="active"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<div class="data-table-card">
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Customer Name</th>
+                    <th>Email Address</th>
+                    <th>Username</th>
+                    <th>Phone</th>
+                    <th>City / Address</th>
+                    <th>Role</th>
+                    <th>Total Orders</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td><strong>#{{ u.id }}</strong></td>
+                    <td>
+                        <strong>{{ u.fullname or 'Anonymous' }}</strong>
+                    </td>
+                    <td>{{ u.email }}</td>
+                    <td><code>{{ u.username or '-' }}</code></td>
+                    <td>{{ u.phone or '-' }}</td>
+                    <td>{{ u.city or u.address or '-' }}</td>
+                    <td>
+                        {% if u.is_admin %}
+                            <span class="admin-tag"><i class="fa-solid fa-shield-halved"></i> Administrator</span>
+                        {% else %}
+                            <span style="font-size:0.78rem; background:#f1f5f9; color:#475569; padding:3px 10px; border-radius:99px; font-weight:700;">Customer</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong style="color:#15803d;">{{ u.order_count or 0 }}</strong> orders
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" style="text-align:center; padding:30px; color:#64748b;">
+                        No registered users found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,26 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PlantCare Hub - Verify OTP</title>
-
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='style.css') }}">
-
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/verify_otp.css') }}">
 </head>
-
 <body class="auth-page">
-
 <div class="auth-overlay">
-
     <div class="auth-card otp-card">
-
         <div class="brand">
             <span class="brand-icon">🌱</span>
             <span>Plant<span>Care</span> Hub</span>
@@ -33,63 +21,61 @@
         <h1>Verify Your Email</h1>
 
         <p class="auth-subtitle">
-            We've sent a 6-digit OTP to your Gmail address.
+            We've sent a 6-digit verification code to<br>
+            <strong class="email-highlight">{{ email or session.get('pending_email', 'your Gmail') }}</strong>
         </p>
 
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, msg in messages %}
+                    <div class="{{ 'auth-error' if category in ['error', 'danger'] else 'auth-success' }}">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
         {% if error %}
-
-        <div class="auth-error">
-            {{ error }}
-        </div>
-
+            <div class="auth-error">⚠️ {{ error }}</div>
+        {% endif %}
+        {% if message %}
+            <div class="auth-success">✓ {{ message }}</div>
         {% endif %}
 
-
-        <form action="{{ url_for('verify_otp') }}" method="POST">
-
-            <label>Enter OTP</label>
-
+        <form action="{{ url_for('verify_otp') }}" method="POST" autocomplete="off">
+            <label for="otp">Enter 6-Digit OTP</label>
             <div class="input-box otp-input">
-
-                <span>🔢</span>
-
+                <span>🔐</span>
                 <input
                     type="text"
+                    id="otp"
                     name="otp"
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="000000"
                     maxlength="6"
                     inputmode="numeric"
                     pattern="[0-9]{6}"
+                    autocomplete="one-time-code"
+                    autofocus
                     required>
-
             </div>
 
-
-            <button
-                type="submit"
-                class="auth-button">
-
-                Verify OTP
-
+            <button type="submit" class="auth-button">
+                Verify OTP & Access Website →
             </button>
-
         </form>
 
-
-        <div class="auth-bottom">
-
-            Didn't receive OTP?
-
-            <a href="{{ url_for('login') }}">
-                Try Again
-            </a>
-
+        <div class="security-note">
+            ⏱ OTP is valid for <span>5 minutes</span>.
         </div>
 
+        <div class="auth-bottom">
+            <div class="resend-box">
+                Didn't receive the code?
+                <a href="{{ url_for('resend_otp') }}" class="resend-link">Resend OTP</a>
+            </div>
+            <div>
+                <a href="{{ url_for('login') }}">← Back to Login</a>
+            </div>
+        </div>
     </div>
-
 </div>
-
 </body>
 </html>

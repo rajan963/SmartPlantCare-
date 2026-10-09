@@ -1,0 +1,26 @@
+/* ==========================================================================
+   PlantCare Hub - Master Stylesheet (style.css)
+   Imports base.css for global design system, header, footer & layout.
+   Page-specific styles are modularized into dedicated stylesheets:
+   - index.css
+   - login.css
+   - register.css
+   - shop.css
+   - plant_details.css
+   - categories.css
+   - cart.css
+   - checkout.css
+   - order_success.css
+   - my_orders.css
+   - profile.css
+   - wishlist.css
+   - admin/dashboard.css
+   - admin/plants.css
+   - admin/add_plant.css
+   - admin/edit_plant.css
+   - admin/orders.css
+   - admin/users.css
+   - admin/sales.css
+   ========================================================================== */
+
+@import url('base.css');

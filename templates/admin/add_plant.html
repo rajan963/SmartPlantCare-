@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Add Plant - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/add_plant.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-plus-circle" style="color:#15803d;"></i> Add New Plant to Catalog</h2>
+        <p>List a new plant variety with care details, pricing, inventory stock, and imagery</p>
+    </div>
+    <a href="{{ url_for('admin_plants') }}" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; padding:9px 18px; font-size:0.9rem;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Plants
+    </a>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}" class="active"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<div class="checkout-card" style="max-width:840px; margin:0 auto;">
+    <form action="{{ url_for('admin_add_plant') }}" method="POST" enctype="multipart/form-data">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="name">Plant Name *</label>
+                <input type="text" id="name" name="name" class="form-control" required placeholder="e.g. Peace Lily">
+            </div>
+            <div class="form-group">
+                <label for="scientific_name">Scientific Name</label>
+                <input type="text" id="scientific_name" name="scientific_name" class="form-control" placeholder="e.g. Spathiphyllum">
+            </div>
+        </div>
+
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="category">Category *</label>
+                <select id="category" name="category" class="form-control" required>
+                    <option value="Flowering">Flowering</option>
+                    <option value="Medicinal">Medicinal</option>
+                    <option value="Indoor">Indoor</option>
+                    <option value="Air Purifying">Air Purifying</option>
+                    <option value="Succulent">Succulent</option>
+                    <option value="Outdoor">Outdoor</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="stock">Inventory Stock Quantity *</label>
+                <input type="number" id="stock" name="stock" class="form-control" required value="20" min="0">
+            </div>
+        </div>
+
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="price">Selling Price (₹) *</label>
+                <input type="number" step="0.01" id="price" name="price" class="form-control" required value="249.00">
+            </div>
+            <div class="form-group">
+                <label for="original_price">Original / MRP Price (₹)</label>
+                <input type="number" step="0.01" id="original_price" name="original_price" class="form-control" value="349.00">
+            </div>
+        </div>
+
+        <!-- Plant Care Specifications -->
+        <h4 style="font-size:1.05rem; font-weight:700; margin:24px 0 12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">
+            <i class="fa-solid fa-heart-pulse"></i> Plant Care Requirements
+        </h4>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px;">
+            <div class="form-group">
+                <label for="sunlight">Sunlight Needs</label>
+                <input type="text" id="sunlight" name="sunlight" class="form-control" placeholder="e.g. Bright Indirect Light" value="Bright Indirect Sunlight">
+            </div>
+            <div class="form-group">
+                <label for="water">Watering Needs</label>
+                <input type="text" id="water" name="water" class="form-control" placeholder="e.g. 2-3 Times / Week" value="2-3 times per week">
+            </div>
+            <div class="form-group">
+                <label for="soil">Soil Type</label>
+                <input type="text" id="soil" name="soil" class="form-control" placeholder="e.g. Well-drained potting mix" value="Well-drained rich potting soil">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Detailed Description & Benefits</label>
+            <textarea id="description" name="description" rows="4" class="form-control" placeholder="Describe plant appearance, care ease, air quality benefits, and nursery quality..."></textarea>
+        </div>
+
+        <!-- Image Upload -->
+        <div class="form-group">
+            <label for="imageInput">Upload Plant Photo</label>
+            <input type="file" id="imageInput" name="image" class="form-control" accept="image/*">
+            <div style="margin-top:10px;">
+                <img id="imagePreview" src="#" alt="Preview" style="display:none; max-width:180px; max-height:180px; border-radius:10px; border:1px solid #e2e8f0; object-fit:cover;">
+            </div>
+        </div>
+
+        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:20px 0;">
+            <input type="checkbox" id="featured" name="featured" value="1" style="width:20px; height:20px; accent-color:#15803d;">
+            <label for="featured" style="margin:0; font-weight:700; cursor:pointer;">Feature this plant on homepage</label>
+        </div>
+
+        <button type="submit" class="btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:1rem;">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Add Plant to Store Catalog
+        </button>
+    </form>
+</div>
+{% endblock %}

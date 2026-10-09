@@ -1,0 +1,36 @@
+/* ==========================================================================
+   PlantCare Hub - My Orders Stylesheet (my_orders.css)
+   Dedicated styles for customer order tracking cards, status timeline badges,
+   item thumbnails, real-time nursery status banners, and cancel actions.
+   ========================================================================== */
+
+.order-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.order-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .order-card {
+    padding: 18px 14px;
+  }
+}

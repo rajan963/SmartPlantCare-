@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - PlantCare Hub{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-gauge-high" style="color:#15803d;"></i> Nursery Admin Dashboard</h2>
+        <p>Monitor customer purchase requests, store revenue, inventory, and fulfillment</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a href="{{ url_for('admin_download_report') }}" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; padding:10px 18px; font-size:0.9rem;" title="Download Sales CSV Report">
+            <i class="fa-solid fa-file-arrow-down"></i> Download Report (CSV)
+        </a>
+        <a href="{{ url_for('admin_add_plant') }}" class="btn-primary" style="padding:10px 20px; font-size:0.9rem;">
+            <i class="fa-solid fa-plus"></i> Add New Plant
+        </a>
+    </div>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}" class="active"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests {% if pending_count > 0 %}<span style="background:#ef4444; color:#fff; font-size:0.75rem; padding:2px 7px; border-radius:99px; margin-left:4px;">{{ pending_count }}</span>{% endif %}</a>
+    <a href="{{ url_for('admin_plants') }}"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<!-- Metric Cards -->
+<div class="metrics-grid">
+    <div class="metric-card">
+        <h4>Total Revenue</h4>
+        <div class="metric-value" style="color:#15803d;">₹{{ "%.0f"|format(total_revenue) }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">From accepted & completed orders</div>
+    </div>
+
+    <div class="metric-card {% if pending_count > 0 %}alert-card{% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h4>Pending Requests</h4>
+            {% if pending_count > 0 %}
+                <span style="background:#ef4444; color:#fff; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:99px;">Action Required</span>
+            {% endif %}
+        </div>
+        <div class="metric-value" style="color:{% if pending_count > 0 %}#b45309{% else %}#0f172a{% endif %};">
+            {{ pending_count }}
+        </div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Awaiting your acceptance</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Total Orders</h4>
+        <div class="metric-value">{{ total_orders }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">All time customer orders</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Live Plants</h4>
+        <div class="metric-value">{{ total_plants }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Active nursery varieties</div>
+    </div>
+
+    <div class="metric-card">
+        <h4>Registered Users</h4>
+        <div class="metric-value">{{ total_users }}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Active customer accounts</div>
+    </div>
+</div>
+
+<!-- URGENT: PENDING PURCHASE REQUESTS SECTION -->
+{% if pending_orders %}
+<div class="data-table-card" style="border: 2px solid #fef08a; background:#fffdf5; margin-bottom:36px;">
+    <div class="table-header-bar" style="background:#fef9c3;">
+        <div>
+            <h3 style="color:#854d0e; display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-bell" style="color:#eab308;"></i> 
+                Pending Plant Purchase Requests ({{ pending_orders|length }})
+            </h3>
+            <p style="font-size:0.85rem; color:#92400e; margin-top:2px;">
+                Review incoming plant orders and click <strong>Accept Order</strong> to confirm nursery fulfillment!
+            </p>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Order #</th>
+                    <th>Customer & Phone</th>
+                    <th>Ordered Plants</th>
+                    <th>Delivery City</th>
+                    <th>Total (₹)</th>
+                    <th>Payment</th>
+                    <th style="text-align:center;">Admin Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ord in pending_orders %}
+                <tr>
+                    <td>
+                        <strong>{{ ord.order_number }}</strong><br>
+                        <span style="font-size:0.75rem; color:#64748b;">{{ ord.created_at[:16] }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ ord.customer_name }}</strong><br>
+                        <span style="font-size:0.8rem; color:#64748b;"><i class="fa-solid fa-phone"></i> {{ ord.customer_phone }}</span>
+                    </td>
+                    <td>
+                        {% for it in ord.order_items %}
+                            <div style="font-size:0.85rem;">
+                                • <strong>{{ it.quantity }}x</strong> {{ it.plant_name }}
+                            </div>
+                        {% endfor %}
+                    </td>
+                    <td>{{ ord.city }}</td>
+                    <td><strong style="color:#15803d; font-size:1rem;">₹{{ "%.0f"|format(ord.total_amount) }}</strong></td>
+                    <td><span style="font-size:0.8rem; background:#f1f5f9; padding:3px 8px; border-radius:4px;">{{ ord.payment_method }}</span></td>
+                    <td style="text-align:center;">
+                        <div style="display:flex; justify-content:center; gap:8px;">
+                            <!-- ACCEPT BUTTON -->
+                            <form action="{{ url_for('admin_accept_order', order_id=ord.id) }}" method="POST" style="margin:0;">
+                                <button type="submit" class="btn-action-accept" title="Accept Plant Purchase Request">
+                                    <i class="fa-solid fa-check"></i> Accept Request
+                                </button>
+                            </form>
+                            <!-- REJECT BUTTON -->
+                            <form action="{{ url_for('admin_reject_order', order_id=ord.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to decline this purchase request?');" style="margin:0;">
+                                <button type="submit" class="btn-action-reject" title="Reject Purchase Request">
+                                    <i class="fa-solid fa-xmark"></i> Reject
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Orders Table -->
+<div class="data-table-card">
+    <div class="table-header-bar">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Customer Orders</h3>
+        <a href="{{ url_for('admin_orders') }}" class="view-all-link">
+            Manage All Orders <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="custom-table">
+            <thead>
+                <tr>
+                    <th>Order #</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Fulfillment Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ord in recent_orders %}
+                <tr>
+                    <td><strong>{{ ord.order_number }}</strong></td>
+                    <td>{{ ord.customer_name }}</td>
+                    <td>{{ ord.created_at[:16] }}</td>
+                    <td><strong>₹{{ "%.0f"|format(ord.total_amount) }}</strong></td>
+                    <td>
+                        <span class="status-badge status-{{ ord.order_status|lower }}">
+                            {{ ord.order_status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if ord.order_status == 'Pending' %}
+                            <form action="{{ url_for('admin_accept_order', order_id=ord.id) }}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn-action-accept"><i class="fa-solid fa-check"></i> Accept</button>
+                            </form>
+                            <form action="{{ url_for('admin_reject_order', order_id=ord.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Decline this order?');">
+                                <button type="submit" class="btn-action-reject"><i class="fa-solid fa-xmark"></i> Reject</button>
+                            </form>
+                        {% elif ord.order_status == 'Accepted' %}
+                            <form action="{{ url_for('admin_update_order_status', order_id=ord.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="status" value="Shipped">
+                                <button type="submit" class="btn-action-edit" style="background:#2563eb;">
+                                    <i class="fa-solid fa-truck"></i> Mark Shipped
+                                </button>
+                            </form>
+                        {% elif ord.order_status == 'Shipped' %}
+                            <form action="{{ url_for('admin_update_order_status', order_id=ord.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="status" value="Delivered">
+                                <button type="submit" class="btn-action-edit" style="background:#16a34a;">
+                                    <i class="fa-solid fa-box-open"></i> Mark Delivered
+                                </button>
+                            </form>
+                        {% else %}
+                            <span style="font-size:0.8rem; color:#64748b;">Completed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align:center; padding:30px; color:#64748b;">
+                        No orders recorded yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

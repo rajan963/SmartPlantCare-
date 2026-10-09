@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}My Wishlist - PlantCare Hub{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/wishlist.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>Saved Plants & Wishlist</h2>
+        <p>{{ wishlist_items|length }} plants saved for later</p>
+    </div>
+    <a href="{{ url_for('shop') }}" class="view-all-link">
+        Explore More Plants <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+
+{% if wishlist_items %}
+<div class="plants-grid">
+    {% for plant in wishlist_items %}
+    <div class="plant-card">
+        <div class="plant-thumb">
+            <a href="{{ url_for('plant_details', id=plant.id) }}" style="display:block; width:100%; height:100%;">
+                {% if plant.image %}
+                    <img src="{{ url_for('static', filename='uploads/' + plant.image) }}" alt="{{ plant.name }}">
+                {% else %}
+                    <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ plant.name }}">
+                {% endif %}
+            </a>
+            <span class="card-badge">{{ plant.category }}</span>
+            <a href="{{ url_for('toggle_wishlist', id=plant.id) }}" class="btn-wishlist active" title="Remove from Wishlist">
+                <i class="fa-solid fa-heart"></i>
+            </a>
+        </div>
+
+        <div class="plant-info">
+            <span class="plant-cat-label">{{ plant.category }}</span>
+            <h3 class="plant-name"><a href="{{ url_for('plant_details', id=plant.id) }}">{{ plant.name }}</a></h3>
+            <p class="plant-sci-name">{{ plant.scientific_name or 'Botanical species' }}</p>
+
+            <div class="plant-footer">
+                <div class="price-wrap">
+                    <span class="current-price">₹{{ "%.0f"|format(plant.price) }}</span>
+                </div>
+
+                <div class="plant-actions">
+                    <a href="{{ url_for('plant_details', id=plant.id) }}" class="btn-view" title="View Plant Details">
+                        <i class="fa-solid fa-eye"></i> View
+                    </a>
+                    {% if plant.stock > 0 %}
+                        <form action="{{ url_for('add_to_cart', id=plant.id) }}" method="POST" style="margin:0;">
+                            <input type="hidden" name="quantity" value="1">
+                            <button type="submit" class="btn-add-cart">
+                                <i class="fa-solid fa-cart-plus"></i> Move to Cart
+                            </button>
+                        </form>
+                    {% else %}
+                        <span class="out-of-stock-badge">Out of Stock</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; padding:60px 24px; text-align:center; max-width:600px; margin:40px auto; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+    <div style="font-size:4rem; color:#cbd5e1; margin-bottom:16px;">
+        <i class="fa-regular fa-heart"></i>
+    </div>
+    <h2 style="font-size:1.6rem; font-weight:800; color:#0f172a; margin-bottom:8px;">Your Wishlist is Empty</h2>
+    <p style="color:#64748b; font-size:0.95rem; margin-bottom:24px;">Explore our lush collection and click the heart icon to save your favorite plants.</p>
+    <a href="{{ url_for('shop') }}" class="btn-primary" style="display:inline-flex;">
+        <i class="fa-solid fa-store"></i> Explore Plants
+    </a>
+</div>
+{% endif %}
+{% endblock %}

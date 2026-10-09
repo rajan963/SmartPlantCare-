@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping Cart - PlantCare Hub{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/cart.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>Your Shopping Cart</h2>
+        <p>{{ cart_items|length }} items ready for checkout</p>
+    </div>
+</div>
+
+{% if cart_items %}
+<div class="cart-layout">
+    <!-- Items Table -->
+    <div class="cart-table-card">
+        <div style="padding-bottom:12px; border-bottom:2px solid #f1f5f9; display:grid; grid-template-columns:80px 1fr 120px 100px 40px; gap:16px; font-weight:700; font-size:0.85rem; color:#64748b; text-transform:uppercase;">
+            <span>Plant</span>
+            <span>Details</span>
+            <span style="text-align:center;">Quantity</span>
+            <span style="text-align:right;">Total</span>
+            <span></span>
+        </div>
+
+        {% for item in cart_items %}
+        <div class="cart-item-row" style="display:grid; grid-template-columns:80px 1fr 120px 100px 40px; gap:16px; align-items:center;">
+            <div class="cart-item-thumb">
+                {% if item.image %}
+                    <img src="{{ url_for('static', filename='uploads/' + item.image) }}" alt="{{ item.name }}">
+                {% else %}
+                    <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ item.name }}">
+                {% endif %}
+            </div>
+
+            <div>
+                <span style="font-size:0.75rem; color:#15803d; font-weight:700; text-transform:uppercase;">{{ item.category }}</span>
+                <h4 style="font-size:1.05rem; font-weight:700; margin:2px 0;"><a href="{{ url_for('plant_details', id=item.plant_id) }}">{{ item.name }}</a></h4>
+                <div style="font-size:0.88rem; color:#64748b;">₹{{ "%.0f"|format(item.price) }} each</div>
+            </div>
+
+            <!-- Quantity Update Form -->
+            <form action="{{ url_for('update_cart', id=item.plant_id) }}" method="POST" style="display:flex; justify-content:center; margin:0;">
+                <div class="qty-control" style="height:36px;">
+                    <button type="submit" name="quantity" value="{{ item.quantity - 1 }}" class="qty-btn" style="height:36px; width:32px;">-</button>
+                    <input type="text" readonly value="{{ item.quantity }}" class="qty-input" style="width:36px; font-size:0.9rem;">
+                    <button type="submit" name="quantity" value="{{ item.quantity + 1 }}" class="qty-btn" style="height:36px; width:32px;" {% if item.quantity >= item.stock %}disabled{% endif %}>+</button>
+                </div>
+            </form>
+
+            <div style="font-weight:800; font-size:1.1rem; color:#0f172a; text-align:right;">
+                ₹{{ "%.0f"|format(item.price * item.quantity) }}
+            </div>
+
+            <div style="text-align:right;">
+                <a href="{{ url_for('remove_from_cart', id=item.plant_id) }}" style="color:#ef4444; font-size:1.1rem;" title="Remove from Cart" onclick="return confirm('Remove {{ item.name }} from your cart?');">
+                    <i class="fa-regular fa-trash-can"></i>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div style="margin-top:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <a href="{{ url_for('shop') }}" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; font-size:0.9rem; padding:9px 18px;">
+                <i class="fa-solid fa-arrow-left"></i> Continue Shopping
+            </a>
+            <a href="{{ url_for('clear_cart') }}" style="color:#64748b; font-size:0.85rem; text-decoration:underline;" onclick="return confirm('Clear all items from your cart?');">
+                Clear Cart
+            </a>
+        </div>
+    </div>
+
+    <!-- Order Summary Card -->
+    <div class="summary-card">
+        <h3>Order Summary</h3>
+
+        <div class="summary-line">
+            <span>Subtotal ({{ cart_items|length }} items)</span>
+            <span style="font-weight:700;">₹{{ "%.0f"|format(subtotal) }}</span>
+        </div>
+
+        <div class="summary-line">
+            <span>Eco-Packaging & Shipping</span>
+            <span>
+                {% if shipping_fee == 0 %}
+                    <strong style="color:#15803d;">FREE</strong>
+                {% else %}
+                    ₹{{ "%.0f"|format(shipping_fee) }}
+                {% endif %}
+            </span>
+        </div>
+
+        {% if subtotal < 499 %}
+            <div style="background:#fef9c3; border:1px solid #fef08a; padding:10px 14px; border-radius:8px; font-size:0.8rem; color:#854d0e; margin:12px 0;">
+                <i class="fa-solid fa-info-circle"></i> Add ₹{{ "%.0f"|format(499 - subtotal) }} more to unlock <strong>FREE Shipping</strong>!
+            </div>
+        {% else %}
+            <div style="background:#dcfce7; border:1px solid #bbf7d0; padding:10px 14px; border-radius:8px; font-size:0.8rem; color:#15803d; margin:12px 0;">
+                <i class="fa-solid fa-circle-check"></i> You have unlocked <strong>FREE Shipping</strong>!
+            </div>
+        {% endif %}
+
+        <div class="summary-line total">
+            <span>Grand Total</span>
+            <span style="color:#15803d;">₹{{ "%.0f"|format(total) }}</span>
+        </div>
+
+        <a href="{{ url_for('checkout') }}" class="btn-checkout">
+            Proceed to Checkout <i class="fa-solid fa-arrow-right"></i>
+        </a>
+
+        <div style="margin-top:20px; font-size:0.82rem; color:#64748b; text-align:center; line-height:1.5;">
+            <i class="fa-solid fa-shield-halved" style="color:#15803d;"></i> Secure checkout. Admin directly verifies & accepts all plant purchase requests.
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Empty Cart State -->
+<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; padding:60px 24px; text-align:center; max-width:600px; margin:40px auto; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+    <div style="font-size:4rem; color:#cbd5e1; margin-bottom:16px;">
+        <i class="fa-solid fa-cart-shopping"></i>
+    </div>
+    <h2 style="font-size:1.6rem; font-weight:800; color:#0f172a; margin-bottom:8px;">Your Cart is Empty</h2>
+    <p style="color:#64748b; font-size:0.95rem; margin-bottom:24px;">Looks like you haven't added any green companions to your cart yet.</p>
+    <a href="{{ url_for('shop') }}" class="btn-primary" style="display:inline-flex;">
+        <i class="fa-solid fa-store"></i> Start Shopping Plants
+    </a>
+</div>
+{% endif %}
+{% endblock %}

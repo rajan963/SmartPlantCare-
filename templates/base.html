@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PlantCare Hub - Online Nursery & Plant Store{% endblock %}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Base Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <!-- Top Announcement Bar -->
+    <div class="top-announcement">
+        🌿 <strong>PlantCare Hub</strong>: Free Eco-friendly packaging & Fast Delivery on orders above ₹499! 🌱
+    </div>
+
+    <!-- Main Navigation Header -->
+    <header class="site-header">
+        <nav class="navbar">
+            <a href="{{ url_for('home') }}" class="logo">
+                <i class="fa-solid fa-leaf"></i>
+                <span>PlantCare<strong>Hub</strong></span>
+            </a>
+
+            <ul class="nav-links">
+                <li><a href="{{ url_for('home') }}"><i class="fa-solid fa-house"></i> Home</a></li>
+                <li><a href="{{ url_for('shop') }}"><i class="fa-solid fa-store"></i> Shop Plants</a></li>
+                <li><a href="{{ url_for('categories') }}"><i class="fa-solid fa-layer-group"></i> Categories</a></li>
+                {% if session.get('user') %}
+                    <li><a href="{{ url_for('my_orders') }}"><i class="fa-solid fa-box-open"></i> My Orders</a></li>
+                {% endif %}
+                {% if session.get('is_admin') %}
+                    <li><a href="{{ url_for('admin_dashboard') }}" class="admin-tag"><i class="fa-solid fa-shield-halved"></i> Admin Panel</a></li>
+                {% endif %}
+            </ul>
+
+            <div class="nav-actions">
+                <!-- Wishlist Icon -->
+                <a href="{{ url_for('wishlist') }}" class="icon-badge-btn" title="Wishlist">
+                    <i class="fa-regular fa-heart"></i>
+                    {% if session.get('wishlist_count', 0) > 0 %}
+                        <span class="badge-count">{{ session.get('wishlist_count') }}</span>
+                    {% endif %}
+                </a>
+
+                <!-- Cart Icon -->
+                <a href="{{ url_for('cart') }}" class="icon-badge-btn" title="Shopping Cart">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                    {% if session.get('cart_count', 0) > 0 %}
+                        <span class="badge-count">{{ session.get('cart_count') }}</span>
+                    {% endif %}
+                </a>
+
+                <!-- User Profile / Auth -->
+                {% if session.get('user') %}
+                    <div class="user-menu-wrap">
+                        <div class="user-avatar-btn" onclick="this.parentElement.classList.toggle('open')">
+                            <i class="fa-regular fa-circle-user"></i>
+                            <span>{{ session.get('fullname', session.get('user', 'Account')).split(' ')[0] }}</span>
+                            <i class="fa-solid fa-chevron-down" style="font-size:0.75rem;"></i>
+                        </div>
+                        <div class="user-dropdown">
+                            <a href="{{ url_for('profile') }}"><i class="fa-solid fa-user-pen"></i> My Profile</a>
+                            <a href="{{ url_for('my_orders') }}"><i class="fa-solid fa-bag-shopping"></i> My Orders</a>
+                            <a href="{{ url_for('wishlist') }}"><i class="fa-solid fa-heart"></i> My Wishlist</a>
+                            {% if session.get('is_admin') %}
+                                <a href="{{ url_for('admin_dashboard') }}" style="color:#15803d; font-weight:700;"><i class="fa-solid fa-gauge-high"></i> Admin Dashboard</a>
+                            {% endif %}
+                            <hr style="border:none; border-top:1px solid #f1f5f9; margin:4px 0;">
+                            <a href="{{ url_for('logout') }}" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="btn-nav-login">
+                        <i class="fa-regular fa-user"></i> Login / Register
+                    </a>
+                {% endif %}
+
+                <button class="mobile-menu-btn" aria-label="Toggle navigation menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Flash Messages (Success / Warning / Error) -->
+    <div class="flash-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }}">
+                        <span>
+                            {% if category == 'success' %}
+                                <i class="fa-solid fa-circle-check" style="margin-right:8px;"></i>
+                            {% elif category == 'error' or category == 'danger' %}
+                                <i class="fa-solid fa-circle-exclamation" style="margin-right:8px;"></i>
+                            {% else %}
+                                <i class="fa-solid fa-circle-info" style="margin-right:8px;"></i>
+                            {% endif %}
+                            {{ message }}
+                        </span>
+                        <button class="alert-close" aria-label="Close alert">&times;</button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content Block -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container-wide footer-grid">
+            <div class="footer-col">
+                <div class="logo" style="color:#22c55e; margin-bottom:16px;">
+                    <i class="fa-solid fa-leaf"></i>
+                    <span style="color:#ffffff;">PlantCare<strong>Hub</strong></span>
+                </div>
+                <p style="font-size:0.9rem; line-height:1.7; margin-bottom:18px;">
+                    Your online boutique nursery. We cultivate healthy flowering, medicinal, air-purifying, and ornamental indoor plants delivered directly to your doorstep with love and care.
+                </p>
+                <div style="display:flex; gap:12px; font-size:1.2rem; color:#cbd5e1;">
+                    <a href="#"><i class="fa-brands fa-facebook"></i></a>
+                    <a href="#"><i class="fa-brands fa-instagram"></i></a>
+                    <a href="#"><i class="fa-brands fa-whatsapp"></i></a>
+                    <a href="#"><i class="fa-brands fa-youtube"></i></a>
+                </div>
+            </div>
+
+            <div class="footer-col">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="{{ url_for('home') }}">Home</a></li>
+                    <li><a href="{{ url_for('shop') }}">Shop Plants</a></li>
+                    <li><a href="{{ url_for('categories') }}">Browse Categories</a></li>
+                    <li><a href="{{ url_for('cart') }}">Shopping Cart</a></li>
+                    <li><a href="{{ url_for('my_orders') }}">Track Orders</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>Plant Categories</h4>
+                <ul>
+                    <li><a href="{{ url_for('shop', category='Flowering') }}">Flowering Plants</a></li>
+                    <li><a href="{{ url_for('shop', category='Medicinal') }}">Medicinal & Herbal</a></li>
+                    <li><a href="{{ url_for('shop', category='Indoor') }}">Indoor Plants</a></li>
+                    <li><a href="{{ url_for('shop', category='Succulent') }}">Succulents & Cacti</a></li>
+                    <li><a href="{{ url_for('shop', category='Air Purifying') }}">Air Purifying Plants</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>Nursery & Support</h4>
+                <p style="font-size:0.88rem; margin-bottom:10px;"><i class="fa-solid fa-location-dot" style="color:#22c55e; margin-right:8px;"></i> Green Valley Botanical Gardens & Nursery</p>
+                <p style="font-size:0.88rem; margin-bottom:10px;"><i class="fa-solid fa-envelope" style="color:#22c55e; margin-right:8px;"></i> support@plantcarehub.com</p>
+                <p style="font-size:0.88rem; margin-bottom:10px;"><i class="fa-solid fa-phone" style="color:#22c55e; margin-right:8px;"></i> +91 98765 43210 (9 AM - 7 PM)</p>
+                <p style="font-size:0.85rem; color:#22c55e; font-weight:600; margin-top:12px;">🌱 100% Guaranteed Healthy Plant Arrival</p>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <p>&copy; 2026 PlantCare Hub. All rights reserved. Handcrafted for plant lovers everywhere.</p>
+        </div>
+    </footer>
+
+    <!-- Main JavaScript -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

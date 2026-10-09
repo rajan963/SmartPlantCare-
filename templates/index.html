@@ -1,136 +1,206 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PlantCare Hub</title>
+{% extends "base.html" %}
 
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% block title %}PlantCare Hub - Online Plant Store & Nursery{% endblock %}
 
-        html, body {
-            width: 100%;
-            height: 100%;
-        }
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+{% endblock %}
 
-        body {
-            background-image:
-                url(static/uploads/plantCareimage.jpeg);
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-banner">
+    <div class="hero-content">
+        <div class="hero-badge">
+            <i class="fa-solid fa-seedling"></i> Direct From Our Nursery
+        </div>
+        <h1 class="hero-title">Bring Nature & Fresh Greenery Into Your Home</h1>
+        <p class="hero-subtitle">
+            Discover lush, healthy plants handpicked by botanists. Delivered with safe, eco-friendly transit packaging and a 7-day thriving guarantee.
+        </p>
+        <div class="hero-cta">
+            <a href="{{ url_for('shop') }}" class="btn-primary">
+                <i class="fa-solid fa-basket-shopping"></i> Explore Shop
+            </a>
+            <a href="{{ url_for('categories') }}" class="btn-outline-light">
+                <i class="fa-solid fa-layer-group"></i> Browse Categories
+            </a>
+        </div>
+    </div>
+</section>
 
-            background-size: 100% 100%;
-            background-position: center;
-            background-repeat: no-repeat;
+<!-- Trust & Benefit Highlights -->
+<section class="trust-bar">
+    <div class="trust-item">
+        <div class="trust-icon"><i class="fa-solid fa-truck-fast"></i></div>
+        <div>
+            <h4>Free Shipping</h4>
+            <p>On all plant orders over ₹499</p>
+        </div>
+    </div>
+    <div class="trust-item">
+        <div class="trust-icon"><i class="fa-solid fa-shield-heart"></i></div>
+        <div>
+            <h4>7-Day Guarantee</h4>
+            <p>100% healthy arrival promised</p>
+        </div>
+    </div>
+    <div class="trust-item">
+        <div class="trust-icon"><i class="fa-solid fa-box-open"></i></div>
+        <div>
+            <h4>Safe Packaging</h4>
+            <p>Specialized breathable plant box</p>
+        </div>
+    </div>
+    <div class="trust-item">
+        <div class="trust-icon"><i class="fa-solid fa-hand-holding-droplet"></i></div>
+        <div>
+            <h4>Free Care Guidance</h4>
+            <p>Sunlight & watering instructions</p>
+        </div>
+    </div>
+</section>
 
-            min-height: 100vh;
-            overflow: hidden;
-        }
-
-        /* TOP RIGHT BUTTONS */
-        .top-buttons {
-            position: fixed;
-            top: 28px;
-            right: 30px;
-
-            display: flex;
-            gap: 14px;
-
-            z-index: 1000;
-        }
-
-        .top-buttons a {
-            text-decoration: none;
-        }
-
-        .top-buttons button {
-            padding: 11px 22px;
-
-            border-radius: 9px;
-            border: 1px solid rgba(255,255,255,0.5);
-
-            background: rgba(0,0,0,0.55);
-            color: white;
-
-            font-size: 14px;
-            font-weight: 700;
-
-            cursor: pointer;
-
-            backdrop-filter: blur(8px);
-
-            transition: 0.25s ease;
-        }
-
-        .top-buttons button:hover {
-            transform: translateY(-2px);
-            background: #19e85b;
-            color: #06150b;
-            border-color: #19e85b;
-            box-shadow: 0 0 20px rgba(25,232,91,0.45);
-        }
-
-        /* GET STARTED */
-        .top-buttons .get-started {
-            background: #19e85b;
-            color: #06150b;
-            border-color: #19e85b;
-        }
-
-        .top-buttons .get-started:hover {
-            background: #27ff70;
-        }
-
-        /* MOBILE */
-        @media (max-width: 600px) {
-
-            .top-buttons {
-                top: 18px;
-                right: 15px;
-                gap: 7px;
-            }
-
-            .top-buttons button {
-                padding: 9px 12px;
-                font-size: 12px;
-            }
-        }
-    </style>
-</head>
-
-<body>
-
-    <div class="top-buttons">
-
-        <a href="/login">
-            <button class="get-started">
-                Get Started
-            </button>
+<!-- Popular Categories -->
+<section style="margin-bottom: 50px;">
+    <div class="section-header">
+        <div>
+            <h2>Explore Categories</h2>
+            <p>Find the perfect plants tailored for your space and lifestyle</p>
+        </div>
+        <a href="{{ url_for('categories') }}" class="view-all-link">
+            All Categories <i class="fa-solid fa-arrow-right"></i>
         </a>
-
-
-        <a href="/">
-          <button>
-              Home
-          </button>
-        </a>
-
-
-        <a href="/login">
-            <button>
-                Login
-            </button>
-        </a>
-
-        <a href="/register">
-            <button>
-                Register
-            </button>
-        </a>
-
     </div>
 
-</body>
-</html>
+    <div class="categories-grid">
+        <a href="{{ url_for('shop', category='Flowering') }}" class="category-card">
+            <div class="cat-icon">🌸</div>
+            <h3>Flowering</h3>
+            <span>Rose, Lily, Hibiscus & more</span>
+        </a>
+        <a href="{{ url_for('shop', category='Medicinal') }}" class="category-card">
+            <div class="cat-icon">🌿</div>
+            <h3>Medicinal</h3>
+            <span>Tulsi, Aloe Vera & herbs</span>
+        </a>
+        <a href="{{ url_for('shop', category='Indoor') }}" class="category-card">
+            <div class="cat-icon">🪴</div>
+            <h3>Indoor</h3>
+            <span>Low-light friendly houseplants</span>
+        </a>
+        <a href="{{ url_for('shop', category='Air Purifying') }}" class="category-card">
+            <div class="cat-icon">🍃</div>
+            <h3>Air Purifying</h3>
+            <span>Natural air detoxifiers</span>
+        </a>
+        <a href="{{ url_for('shop', category='Succulent') }}" class="category-card">
+            <div class="cat-icon">🌵</div>
+            <h3>Succulents</h3>
+            <span>Low maintenance hardy beauties</span>
+        </a>
+    </div>
+</section>
+
+<!-- Featured Plants -->
+<section style="margin-bottom: 50px;">
+    <div class="section-header">
+        <div>
+            <h2>Featured Plants</h2>
+            <p>Customer favorites and seasonal blooming highlights</p>
+        </div>
+        <a href="{{ url_for('shop') }}" class="view-all-link">
+            View All Plants <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+
+    <div class="plants-grid">
+        {% for plant in featured_plants %}
+        <div class="plant-card">
+            <div class="plant-thumb">
+                <a href="{{ url_for('plant_details', id=plant.id) }}" style="display:block; width:100%; height:100%;">
+                    {% if plant.image %}
+                        <img src="{{ url_for('static', filename='uploads/' + plant.image) }}" alt="{{ plant.name }}" loading="lazy">
+                    {% else %}
+                        <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ plant.name }}" loading="lazy">
+                    {% endif %}
+                </a>
+                <span class="card-badge">{{ plant.category }}</span>
+                <a href="{{ url_for('toggle_wishlist', id=plant.id) }}" class="btn-wishlist {% if plant.id in wishlist_ids %}active{% endif %}" title="Add to Wishlist">
+                    <i class="fa-{% if plant.id in wishlist_ids %}solid{% else %}regular{% endif %} fa-heart"></i>
+                </a>
+            </div>
+
+            <div class="plant-info">
+                <span class="plant-cat-label">{{ plant.category }}</span>
+                <h3 class="plant-name"><a href="{{ url_for('plant_details', id=plant.id) }}">{{ plant.name }}</a></h3>
+                <p class="plant-sci-name">{{ plant.scientific_name or 'Botanical species' }}</p>
+
+                <div class="plant-care-tags">
+                    <span class="care-tag" title="Sunlight"><i class="fa-regular fa-sun"></i> {{ plant.sunlight[:14] if plant.sunlight else 'Bright Sun' }}</span>
+                    <span class="care-tag" title="Watering"><i class="fa-solid fa-droplet"></i> {{ plant.water[:14] if plant.water else 'Regular' }}</span>
+                </div>
+
+                <div class="plant-footer">
+                    <div class="price-wrap">
+                        <span class="current-price">₹{{ "%.0f"|format(plant.price) }}</span>
+                        {% if plant.original_price and plant.original_price > plant.price %}
+                            <span class="original_price">₹{{ "%.0f"|format(plant.original_price) }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="plant-actions">
+                        <a href="{{ url_for('plant_details', id=plant.id) }}" class="btn-view" title="View Plant Details">
+                            <i class="fa-solid fa-eye"></i> View
+                        </a>
+                        {% if plant.stock > 0 %}
+                            <form action="{{ url_for('add_to_cart', id=plant.id) }}" method="POST" style="margin:0;">
+                                <input type="hidden" name="quantity" value="1">
+                                <button type="submit" class="btn-add-cart">
+                                    <i class="fa-solid fa-cart-plus"></i> Add
+                                </button>
+                            </form>
+                        {% else %}
+                            <span class="out-of-stock-badge">Sold Out</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p style="grid-column: 1/-1; text-align:center; padding: 40px; color:#64748b;">
+            Plants are being refreshed in the nursery catalog. Check back soon!
+        </p>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- Banner: Nursery Direct Process -->
+<section style="background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; padding:36px; margin-bottom:50px;">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:30px; align-items:center;">
+        <div>
+            <span style="color:#15803d; font-weight:700; text-transform:uppercase; font-size:0.85rem; letter-spacing:1px;">How We Work</span>
+            <h2 style="font-size:1.85rem; font-weight:800; margin:8px 0 14px; color:#0f172a;">Order Direct From Expert Gardeners</h2>
+            <p style="color:#475569; font-size:0.95rem; line-height:1.7; margin-bottom:20px;">
+                When you place an order on PlantCare Hub, our nursery admin directly inspects and accepts your plant request. Each plant is groomed, nourished, gently secured in breathable boxes, and dispatched fast.
+            </p>
+            <div style="display:flex; gap:16px; align-items:center;">
+                <div style="font-size:2rem; color:#15803d;"><i class="fa-solid fa-shield-halved"></i></div>
+                <div>
+                    <h4 style="font-size:1rem; font-weight:700;">Verified Plant Health</h4>
+                    <p style="font-size:0.85rem; color:#64748b;">Admin validates every single plant before accepting delivery.</p>
+                </div>
+            </div>
+        </div>
+        <div style="background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius:14px; padding:30px; border:1px solid #bbf7d0;">
+            <h3 style="font-size:1.25rem; font-weight:800; color:#14532d; margin-bottom:12px;">Need Help Choosing?</h3>
+            <p style="font-size:0.9rem; color:#166534; margin-bottom:20px;">
+                Whether you need low-maintenance indoor plants, aromatic flowering roses, or sacred herbal Tulsi, our catalog has you covered.
+            </p>
+            <a href="{{ url_for('shop') }}" class="btn-primary" style="background:#15803d; color:#ffffff;">
+                Browse All Plants <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

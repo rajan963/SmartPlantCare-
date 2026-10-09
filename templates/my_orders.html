@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders - PlantCare Hub{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/my_orders.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2>My Plant Orders</h2>
+        <p>Track your plant purchases and admin acceptance status in real time</p>
+    </div>
+    <a href="{{ url_for('shop') }}" class="btn-primary" style="padding:9px 18px; font-size:0.9rem;">
+        <i class="fa-solid fa-cart-plus"></i> Shop More Plants
+    </a>
+</div>
+
+{% if orders %}
+<div style="max-width:900px; margin:0 auto;">
+    {% for ord in orders %}
+    <div class="order-card">
+        <!-- Order Header -->
+        <div class="order-header">
+            <div>
+                <span style="font-size:0.75rem; color:#64748b; font-weight:700; text-transform:uppercase;">Order ID</span>
+                <h3 style="font-size:1.15rem; font-weight:800; color:#0f172a;">{{ ord.order_number }}</h3>
+                <span style="font-size:0.82rem; color:#64748b;">Placed on {{ ord.created_at[:16] }}</span>
+            </div>
+
+            <div style="text-align:right;">
+                <!-- Status Badge -->
+                {% if ord.order_status == 'Pending' %}
+                    <span class="status-badge status-pending">
+                        <i class="fa-solid fa-clock"></i> Waiting for Admin Approval
+                    </span>
+                {% elif ord.order_status == 'Accepted' %}
+                    <span class="status-badge status-accepted">
+                        <i class="fa-solid fa-circle-check"></i> Accepted by Nursery Admin
+                    </span>
+                {% elif ord.order_status == 'Shipped' %}
+                    <span class="status-badge status-shipped">
+                        <i class="fa-solid fa-truck-fast"></i> Shipped & Dispatched
+                    </span>
+                {% elif ord.order_status == 'Delivered' %}
+                    <span class="status-badge status-delivered">
+                        <i class="fa-solid fa-box-open"></i> Delivered
+                    </span>
+                {% elif ord.order_status == 'Rejected' %}
+                    <span class="status-badge status-rejected">
+                        <i class="fa-solid fa-circle-xmark"></i> Rejected by Admin
+                    </span>
+                {% else %}
+                    <span class="status-badge status-cancelled">
+                        <i class="fa-solid fa-ban"></i> {{ ord.order_status }}
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Status Message Banner -->
+        {% if ord.order_status == 'Pending' %}
+            <div style="background:#fef9c3; border-left:4px solid #eab308; padding:10px 14px; border-radius:6px; font-size:0.85rem; color:#854d0e; margin-bottom:16px;">
+                <i class="fa-solid fa-info-circle"></i> <strong>Pending Request:</strong> Your order has been submitted. The nursery admin is reviewing available stock and will accept your order soon.
+            </div>
+        {% elif ord.order_status == 'Accepted' %}
+            <div style="background:#dcfce7; border-left:4px solid #16a34a; padding:10px 14px; border-radius:6px; font-size:0.85rem; color:#14532d; margin-bottom:16px;">
+                <i class="fa-solid fa-check-circle"></i> <strong>Request Accepted:</strong> The nursery admin approved your purchase. Your healthy plants are being packed for transit.
+            </div>
+        {% elif ord.order_status == 'Rejected' %}
+            <div style="background:#fee2e2; border-left:4px solid #ef4444; padding:10px 14px; border-radius:6px; font-size:0.85rem; color:#991b1b; margin-bottom:16px;">
+                <i class="fa-solid fa-triangle-exclamation"></i> <strong>Order Declined:</strong> The nursery admin could not accept this order (e.g. stock replenishment or seasonal pause). Any advance payment will be refunded.
+            </div>
+        {% endif %}
+
+        <!-- Order Items List -->
+        <div style="margin-bottom:16px;">
+            {% for it in ord.order_items %}
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f1f5f9; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:48px; height:48px; border-radius:8px; overflow:hidden; background:#f1f5f9; flex-shrink:0;">
+                        {% if it.plant_image %}
+                            <img src="{{ url_for('static', filename='uploads/' + it.plant_image) }}" alt="{{ it.plant_name }}" style="width:100%; height:100%; object-fit:cover;">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ it.plant_name }}" style="width:100%; height:100%; object-fit:cover;">
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h4 style="font-size:0.95rem; font-weight:700; color:#0f172a; margin-bottom:2px;">
+                            <a href="{{ url_for('plant_details', id=it.plant_id) }}">{{ it.plant_name }}</a>
+                        </h4>
+                        <span style="font-size:0.82rem; color:#64748b;">Quantity: {{ it.quantity }} × ₹{{ "%.0f"|format(it.price) }}</span>
+                    </div>
+                </div>
+
+                <div style="font-weight:700; font-size:0.95rem; color:#0f172a;">
+                    ₹{{ "%.0f"|format(it.subtotal) }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Order Footer with Delivery details and total -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding-top:14px; border-top:1px solid #e2e8f0; font-size:0.88rem;">
+            <div>
+                <span style="color:#64748b;"><i class="fa-solid fa-location-dot"></i> Ship to:</span>
+                <strong>{{ ord.customer_name }}</strong>, {{ ord.shipping_address }}, {{ ord.city }}
+                <div style="color:#64748b; font-size:0.8rem; margin-top:2px;">
+                    Payment: <strong>{{ ord.payment_method }}</strong> ({{ ord.payment_status }})
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div>
+                    <span style="color:#64748b; font-size:0.8rem; display:block;">Total Amount</span>
+                    <strong style="font-size:1.25rem; color:#15803d;">₹{{ "%.0f"|format(ord.total_amount) }}</strong>
+                </div>
+
+                {% if ord.order_status == 'Pending' %}
+                <form action="{{ url_for('cancel_order', order_id=ord.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to cancel this order?');" style="margin:0;">
+                    <button type="submit" class="btn-outline-light" style="color:#ef4444; border-color:#fca5a5; padding:6px 14px; font-size:0.82rem; border-radius:6px;">
+                        <i class="fa-solid fa-xmark"></i> Cancel Order
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; padding:60px 24px; text-align:center; max-width:600px; margin:40px auto; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+    <div style="font-size:4rem; color:#cbd5e1; margin-bottom:16px;">
+        <i class="fa-solid fa-box-open"></i>
+    </div>
+    <h2 style="font-size:1.6rem; font-weight:800; color:#0f172a; margin-bottom:8px;">No Orders Yet</h2>
+    <p style="color:#64748b; font-size:0.95rem; margin-bottom:24px;">You haven't placed any plant orders yet. Start exploring our nursery collection today!</p>
+    <a href="{{ url_for('shop') }}" class="btn-primary" style="display:inline-flex;">
+        <i class="fa-solid fa-store"></i> Shop Fresh Plants
+    </a>
+</div>
+{% endif %}
+{% endblock %}

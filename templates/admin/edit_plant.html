@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ plant.name }} - Admin Panel{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin/edit_plant.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-top:10px;">
+    <div>
+        <h2><i class="fa-solid fa-pen-to-square" style="color:#15803d;"></i> Edit Plant: {{ plant.name }}</h2>
+        <p>Update pricing, inventory stock, plant care recommendations, or imagery</p>
+    </div>
+    <a href="{{ url_for('admin_plants') }}" class="btn-outline-light" style="color:#15803d; border-color:#bbf7d0; padding:9px 18px; font-size:0.9rem;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Catalog
+    </a>
+</div>
+
+<!-- Admin Sub Navigation -->
+<nav class="admin-nav">
+    <a href="{{ url_for('admin_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+    <a href="{{ url_for('admin_orders') }}"><i class="fa-solid fa-boxes-packing"></i> Orders & Requests</a>
+    <a href="{{ url_for('admin_plants') }}" class="active"><i class="fa-solid fa-seedling"></i> Plant Catalog</a>
+    <a href="{{ url_for('admin_add_plant') }}"><i class="fa-solid fa-plus"></i> Add Plant</a>
+    <a href="{{ url_for('admin_users') }}"><i class="fa-solid fa-users"></i> Customers</a>
+    <a href="{{ url_for('admin_sales') }}"><i class="fa-solid fa-chart-line"></i> Sales & Revenue</a>
+</nav>
+
+<div class="checkout-card" style="max-width:840px; margin:0 auto;">
+    <form action="{{ url_for('admin_edit_plant', id=plant.id) }}" method="POST" enctype="multipart/form-data">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="name">Plant Name *</label>
+                <input type="text" id="name" name="name" class="form-control" required value="{{ plant.name }}">
+            </div>
+            <div class="form-group">
+                <label for="scientific_name">Scientific Name</label>
+                <input type="text" id="scientific_name" name="scientific_name" class="form-control" value="{{ plant.scientific_name or '' }}">
+            </div>
+        </div>
+
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="category">Category *</label>
+                <select id="category" name="category" class="form-control" required>
+                    <option value="Flowering" {% if plant.category == 'Flowering' %}selected{% endif %}>Flowering</option>
+                    <option value="Medicinal" {% if plant.category == 'Medicinal' %}selected{% endif %}>Medicinal</option>
+                    <option value="Indoor" {% if plant.category == 'Indoor' %}selected{% endif %}>Indoor</option>
+                    <option value="Air Purifying" {% if plant.category == 'Air Purifying' %}selected{% endif %}>Air Purifying</option>
+                    <option value="Succulent" {% if plant.category == 'Succulent' %}selected{% endif %}>Succulent</option>
+                    <option value="Outdoor" {% if plant.category == 'Outdoor' %}selected{% endif %}>Outdoor</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="stock">Inventory Stock Quantity *</label>
+                <input type="number" id="stock" name="stock" class="form-control" required value="{{ plant.stock }}" min="0">
+            </div>
+        </div>
+
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="price">Selling Price (₹) *</label>
+                <input type="number" step="0.01" id="price" name="price" class="form-control" required value="{{ '%.2f'|format(plant.price) }}">
+            </div>
+            <div class="form-group">
+                <label for="original_price">Original / MRP Price (₹)</label>
+                <input type="number" step="0.01" id="original_price" name="original_price" class="form-control" value="{{ '%.2f'|format(plant.original_price or plant.price) }}">
+            </div>
+        </div>
+
+        <!-- Care Specifications -->
+        <h4 style="font-size:1.05rem; font-weight:700; margin:24px 0 12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">
+            <i class="fa-solid fa-heart-pulse"></i> Plant Care Requirements
+        </h4>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px;">
+            <div class="form-group">
+                <label for="sunlight">Sunlight Needs</label>
+                <input type="text" id="sunlight" name="sunlight" class="form-control" value="{{ plant.sunlight or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="water">Watering Needs</label>
+                <input type="text" id="water" name="water" class="form-control" value="{{ plant.water or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="soil">Soil Type</label>
+                <input type="text" id="soil" name="soil" class="form-control" value="{{ plant.soil or '' }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Detailed Description & Benefits</label>
+            <textarea id="description" name="description" rows="4" class="form-control">{{ plant.description or '' }}</textarea>
+        </div>
+
+        <!-- Current Image & Upload -->
+        <div class="form-group">
+            <label>Current Photo</label>
+            <div style="display:flex; align-items:center; gap:16px; margin-bottom:10px;">
+                <div style="width:70px; height:70px; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
+                    {% if plant.image %}
+                        <img src="{{ url_for('static', filename='uploads/' + plant.image) }}" alt="{{ plant.name }}" style="width:100%; height:100%; object-fit:cover;">
+                    {% else %}
+                        <img src="{{ url_for('static', filename='uploads/plantCareimage.jpeg') }}" alt="{{ plant.name }}" style="width:100%; height:100%; object-fit:cover;">
+                    {% endif %}
+                </div>
+                <div style="flex:1;">
+                    <label for="imageInput" style="font-size:0.85rem; color:#64748b;">Upload new photo to replace current (optional):</label>
+                    <input type="file" id="imageInput" name="image" class="form-control" accept="image/*">
+                </div>
+            </div>
+            <div>
+                <img id="imagePreview" src="#" alt="New Preview" style="display:none; max-width:140px; max-height:140px; border-radius:8px; border:1px solid #e2e8f0; object-fit:cover;">
+            </div>
+        </div>
+
+        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin:20px 0;">
+            <input type="checkbox" id="featured" name="featured" value="1" {% if plant.featured %}checked{% endif %} style="width:20px; height:20px; accent-color:#15803d;">
+            <label for="featured" style="margin:0; font-weight:700; cursor:pointer;">Feature this plant on homepage</label>
+        </div>
+
+        <button type="submit" class="btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:1rem;">
+            <i class="fa-solid fa-floppy-disk"></i> Save Changes to Plant
+        </button>
+    </form>
+</div>
+{% endblock %}
