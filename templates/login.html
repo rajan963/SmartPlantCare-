@@ -32,7 +32,8 @@
             <label>Gmail Address</label>
             <div class="input-box">
                 <div class="input-icon">✉</div>
-                <input type="email" name="email" placeholder="Enter your Gmail address"
+                <input type="text" inputmode="email" name="auth_email" id="forgot_auth_email"
+                       placeholder="Enter your Gmail address"
                        autocomplete="off" autocapitalize="none" spellcheck="false" required>
             </div>
             <button type="submit" class="login-btn">Send Reset OTP →</button>
@@ -143,17 +144,15 @@
             <label>Email Address</label>
             <div class="input-box">
                 <div class="input-icon">✉</div>
-                <input type="email"
-                       name="email"
-                       id="email"
+                <input type="text"
+                       inputmode="email"
+                       name="auth_email"
+                       id="auth_email"
                        placeholder="Enter your Gmail address"
-                       autocomplete="new-password"
+                       autocomplete="off"
                        autocapitalize="none"
                        spellcheck="false"
                        value=""
-                       readonly
-                       onfocus="this.removeAttribute('readonly');"
-                       onpointerdown="this.removeAttribute('readonly');"
                        required>
             </div>
 
@@ -161,14 +160,11 @@
             <div class="input-box">
                 <div class="input-icon">🔒</div>
                 <input type="password"
-                       name="password"
-                       id="password"
+                       name="auth_password"
+                       id="auth_password"
                        placeholder="Enter your password"
                        autocomplete="new-password"
                        value=""
-                       readonly
-                       onfocus="this.removeAttribute('readonly');"
-                       onpointerdown="this.removeAttribute('readonly');"
                        required>
                 <button type="button" class="show-btn" onclick="togglePassword()" aria-label="Toggle password visibility">👁</button>
             </div>
@@ -189,7 +185,7 @@
 
 <script>
 function togglePassword(){
-    const p = document.getElementById("password");
+    const p = document.getElementById("auth_password");
     if(p) {
         p.type = p.type === "password" ? "text" : "password";
     }
@@ -202,23 +198,18 @@ function toggleNewPassword(){
     }
 }
 
-// Strictly prevent browser autofill and force clean empty inputs on load
+// Ensure login inputs are completely blank on load
 function clearLoginInputs() {
-    const em = document.getElementById("email");
-    const pw = document.getElementById("password");
-    if (em && em.hasAttribute("readonly")) {
-        em.value = "";
-    }
-    if (pw && pw.hasAttribute("readonly")) {
-        pw.value = "";
-    }
+    const em = document.getElementById("auth_email");
+    const pw = document.getElementById("auth_password");
+    if (em) em.value = "";
+    if (pw) pw.value = "";
 }
 
 document.addEventListener("DOMContentLoaded", function() {
     clearLoginInputs();
     setTimeout(clearLoginInputs, 50);
     setTimeout(clearLoginInputs, 200);
-    setTimeout(clearLoginInputs, 400);
 });
 
 window.addEventListener("pageshow", function() {

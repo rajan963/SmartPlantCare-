@@ -31,40 +31,44 @@
     {% endif %}
 
     <form method="POST" action="/register" autocomplete="off">
+        <!-- Hidden honeypot inputs to trap browser autofill engines -->
+        <input type="text" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1" autocomplete="off">
+        <input type="password" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1" autocomplete="new-password">
+
         <div class="field">
-            <label for="fullname">Full Name</label>
+            <label for="reg_user_fullname">Full Name</label>
             <div class="input-box">
-                <input type="text" id="fullname" name="fullname"
+                <input type="text" id="reg_user_fullname" name="reg_user_fullname"
                        placeholder="Enter your full name"
-                       value="{{ request.form.get('fullname', '') }}"
-                       autocomplete="name" spellcheck="false" required>
+                       value=""
+                       autocomplete="off" spellcheck="false" required>
             </div>
         </div>
 
         <div class="field">
-            <label for="email">Gmail Address</label>
+            <label for="reg_user_email">Gmail Address</label>
             <div class="input-box">
-                <input type="email" id="email" name="email"
+                <input type="text" inputmode="email" id="reg_user_email" name="reg_user_email"
                        placeholder="Enter your Gmail address"
-                       value="{{ request.form.get('email', '') }}"
-                       autocomplete="email" autocapitalize="none" spellcheck="false" required>
+                       value=""
+                       autocomplete="off" autocapitalize="none" spellcheck="false" required>
             </div>
         </div>
 
         <div class="field">
-            <label for="username">Username</label>
+            <label for="reg_user_login">Username</label>
             <div class="input-box">
-                <input type="text" id="username" name="username"
+                <input type="text" id="reg_user_login" name="reg_user_login"
                        placeholder="Create username"
-                       value="{{ request.form.get('username', '') }}"
-                       autocomplete="username" autocapitalize="none" spellcheck="false" required>
+                       value=""
+                       autocomplete="off" autocapitalize="none" spellcheck="false" required>
             </div>
         </div>
 
         <div class="field">
-            <label for="password">Password</label>
+            <label for="reg_user_password">Password</label>
             <div class="input-box">
-                <input type="password" id="password" name="password"
+                <input type="password" id="reg_user_password" name="reg_user_password"
                        class="password-input" placeholder="Create password (min. 6 characters)"
                        autocomplete="new-password" minlength="6" required>
                 <span class="eye" onclick="togglePassword()" id="eye" title="Show/Hide Password">👁</span>
@@ -87,7 +91,7 @@
 
 <script>
 function togglePassword(){
-    const password = document.getElementById("password");
+    const password = document.getElementById("reg_user_password");
     const eye = document.getElementById("eye");
     if(password.type === "password"){
         password.type = "text";
@@ -97,6 +101,19 @@ function togglePassword(){
         eye.textContent = "👁";
     }
 }
+
+function clearRegisterInputs() {
+    ["reg_user_fullname", "reg_user_email", "reg_user_login", "reg_user_password"].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+}
+document.addEventListener("DOMContentLoaded", function() {
+    clearRegisterInputs();
+    setTimeout(clearRegisterInputs, 50);
+    setTimeout(clearRegisterInputs, 200);
+});
+window.addEventListener("pageshow", clearRegisterInputs);
 </script>
 </body>
 </html>

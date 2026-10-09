@@ -901,10 +901,10 @@ def register():
         return redirect(url_for("home"))
 
     if request.method == "POST":
-        fullname = request.form.get("fullname", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        fullname = (request.form.get("reg_user_fullname") or request.form.get("fullname") or "").strip()
+        email = (request.form.get("reg_user_email") or request.form.get("email") or "").strip().lower()
+        username = (request.form.get("reg_user_login") or request.form.get("username") or "").strip()
+        password = request.form.get("reg_user_password") or request.form.get("password") or ""
 
         if not fullname or not email or not username or not password:
             return render_template("register.html", error="Please fill in all required fields.")
@@ -963,8 +963,8 @@ def login():
         return redirect(url_for("home"))
 
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
+        email = (request.form.get("auth_email") or request.form.get("email") or "").strip().lower()
+        password = request.form.get("auth_password") or request.form.get("password") or ""
 
         if not email or not password:
             return render_template("login.html", error="Please enter both Gmail address and password.")
@@ -1102,7 +1102,7 @@ def resend_otp():
 def forgot_password():
     """Initiate password reset by sending OTP to registered Gmail."""
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        email = (request.form.get("auth_email") or request.form.get("email") or "").strip().lower()
 
         conn = get_db()
         cur = conn.cursor()
