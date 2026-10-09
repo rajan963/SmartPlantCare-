@@ -750,57 +750,101 @@ def send_email_smtp(receiver_email, subject, html_content, text_content=None):
     return True
 
 
+def send_brevo_email(receiver_email, subject, html_content, text_content=None):
+    """Deliver transactional email using Brevo (Sendinblue) API over HTTPS (port 443)."""
+    brevo_key = os.getenv("BREVO_API_KEY", "").strip()
+    brevo_sender = os.getenv("BREVO_SENDER") or os.getenv("GMAIL_SENDER") or "noreply@smartplantcare.com"
+    if not brevo_key:
+        return False
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": brevo_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    payload = {
+        "sender": {"name": "PlantCare Hub", "email": brevo_sender.strip()},
+        "to": [{"email": receiver_email.strip()}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+    if text_content:
+        payload["textContent"] = text_content
+    resp = requests.post(url, headers=headers, json=payload, timeout=12)
+    if resp.status_code in [200, 201, 202]:
+        return resp.json()
+    raise RuntimeError(f"Brevo error ({resp.status_code}): {resp.text}")
+
+
+def send_webhook_email(receiver_email, subject, html_content, text_content=None):
+    """Deliver email via Google Apps Script or custom webhook over HTTPS (port 443)."""
+    webhook_url = os.getenv("GMAIL_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return False
+    payload = {
+        "to": receiver_email.strip(),
+        "subject": subject,
+        "html": html_content,
+        "text": text_content or ""
+    }
+    resp = requests.post(webhook_url, json=payload, timeout=12)
+    if resp.status_code == 200:
+        return True
+    raise RuntimeError(f"Webhook error ({resp.status_code}): {resp.text}")
+
+
 def send_otp_email_universal(receiver_email, subject, html_content, text_content=None, otp=None, purpose="Password Reset"):
     """
     Universal smart email delivery:
-    1. If Resend API is available:
-       - If custom verified domain OR recipient is ADMIN_EMAIL (the Resend account owner),
-         sends directly via Resend API.
-       - Note: Resend's free test domain (onboarding@resend.dev) restricts direct delivery
-         exclusively to the account owner's email address.
-    2. Try Gmail SMTP (with 4s timeout so it doesn't hang on Render free tier where outbound SMTP is blocked).
-    3. If neither direct method can deliver to receiver_clean (e.g. Render free tier blocking SMTP
-       and Resend in sandbox mode):
-       - Send OTP notification via Resend API to ADMIN_EMAIL (which Resend allows because it is the account owner).
-       - Return a graceful status with sandbox_mode=True and the OTP, so the UI can display the OTP
-         directly to the user and allow them to proceed without being blocked.
+    1. Google Apps Script Webhook (if GMAIL_WEBHOOK_URL configured, sends over port 443 via Gmail).
+    2. Brevo API (if BREVO_API_KEY configured, sends over port 443).
+    3. Resend API (if RESEND_API_KEY configured, sends over port 443).
+    4. Gmail SMTP (works on localhost or unblocked hosts).
+    5. Fallback: Dispatches OTP notification to admin via Resend API so owner has the record.
     """
     receiver_clean = receiver_email.strip()
     api_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
     from_email = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
     admin_target = (os.getenv("ADMIN_EMAIL") or ADMIN_EMAIL or "rajankumar01331@gmail.com").strip().lower()
 
-    is_sandbox = ("onboarding@resend.dev" in from_email.lower())
-    is_owner = (receiver_clean.lower() == admin_target)
+    # 1. Try Google Apps Script webhook if configured
+    if os.getenv("GMAIL_WEBHOOK_URL"):
+        try:
+            send_webhook_email(receiver_clean, subject, html_content, text_content)
+            print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Gmail Webhook.")
+            return {"success": True, "direct": True, "method": "webhook"}
+        except Exception as e:
+            print(f"[OTP Email Engine] Webhook delivery failed: {e}")
 
-    # 1. Attempt direct Resend API delivery (if custom verified domain OR recipient is Resend account owner)
-    if api_key and (not is_sandbox or is_owner):
+    # 2. Try Brevo API if configured
+    if os.getenv("BREVO_API_KEY"):
+        try:
+            send_brevo_email(receiver_clean, subject, html_content, text_content)
+            print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Brevo API.")
+            return {"success": True, "direct": True, "method": "brevo"}
+        except Exception as e:
+            print(f"[OTP Email Engine] Brevo delivery failed: {e}")
+
+    # 3. Try direct Resend API delivery
+    if api_key:
         try:
             res = send_resend_email(receiver_clean, subject, html_content, text_content)
             print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Resend API.")
-            return {"success": True, "direct": True, "sandbox_mode": False, "method": "resend", "data": res}
+            return {"success": True, "direct": True, "method": "resend", "data": res}
         except Exception as e:
             print(f"[OTP Email Engine] Direct Resend API failed: {e}. Trying Gmail SMTP fallback...")
 
-    # 2. Attempt Gmail SMTP delivery (works when port 465 is reachable, e.g. local / unblocked server)
+    # 4. Try Gmail SMTP delivery (works when port 465 is reachable, e.g. local / unblocked server)
     smtp_err_msg = None
     try:
         send_email_smtp(receiver_clean, subject, html_content, text_content)
         print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Gmail SMTP.")
-        return {"success": True, "direct": True, "sandbox_mode": False, "method": "smtp"}
+        return {"success": True, "direct": True, "method": "smtp"}
     except Exception as smtp_err:
         smtp_err_msg = str(smtp_err)
         print(f"[OTP Email Engine] Gmail SMTP delivery failed: {smtp_err}")
 
-    # 3. If custom domain was configured but failed earlier, try Resend directly once more
-    if api_key and not is_sandbox and not is_owner:
-        try:
-            res = send_resend_email(receiver_clean, subject, html_content, text_content)
-            return {"success": True, "direct": True, "sandbox_mode": False, "method": "resend", "data": res}
-        except Exception as e:
-            print(f"[OTP Email Engine] Resend retry failed: {e}")
-
-    # 4. Sandbox fallback: When on Render (SMTP blocked) and using onboarding@resend.dev (restricted to owner):
+    # 5. Sandbox fallback: When on Render (SMTP blocked) and using onboarding@resend.dev (restricted to owner):
     # Send notification with OTP to admin via Resend API using onboarding@resend.dev so Resend key is actively used
     if api_key and admin_target:
         try:
@@ -828,11 +872,10 @@ def send_otp_email_universal(receiver_email, subject, html_content, text_content
         except Exception as admin_send_err:
             print(f"[OTP Email Engine] Admin Resend notification error: {admin_send_err}")
 
-    # Return sandbox delivered flag so callers can present OTP to user smoothly
+    # Return sandbox delivered flag
     return {
         "success": True,
         "direct": False,
-        "sandbox_mode": True,
         "otp": otp,
         "receiver": receiver_clean,
         "smtp_error": smtp_err_msg
@@ -1045,10 +1088,7 @@ def login():
         session["login_otp_hash"] = hash_otp(otp)
         session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-            flash(f"Login OTP: {otp} (Test Mode: Enter this 6-digit code below to log in)", "info")
-        else:
-            flash(f"A 6-digit OTP code has been sent to {user['email']}.", "info")
+        flash(f"A 6-digit OTP code has been sent to {user['email']}. Please check your inbox or spam folder.", "info")
         return redirect(url_for("verify_otp"))
 
     return render_template("login.html")
@@ -1138,10 +1178,7 @@ def resend_otp():
     session["login_otp_hash"] = hash_otp(otp)
     session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-    if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-        flash(f"New Login OTP: {otp} (Test Mode: Enter this 6-digit code below to log in)", "info")
-    else:
-        flash("A fresh 6-digit OTP code has been sent to your Gmail.", "success")
+    flash("A fresh 6-digit OTP code has been sent to your Gmail. Please check your inbox or spam folder.", "success")
     return redirect(url_for("verify_otp"))
 
 
@@ -1178,10 +1215,7 @@ def forgot_password():
         session["forgot_otp_hash"] = hash_otp(otp)
         session["forgot_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-            success_msg = f"Reset OTP: {otp} (Test Mode: Enter this 6-digit code below to set new password)"
-        else:
-            success_msg = "Password reset OTP sent successfully to your Gmail."
+        success_msg = "Password reset OTP sent successfully to your Gmail. Please check your inbox or spam folder."
 
         return render_template(
             "login.html",
