@@ -136,16 +136,24 @@
         {% if message %}<div class="message">✓ {{ message }}</div>{% endif %}
 
         <form method="POST" action="/login" autocomplete="off">
+            <!-- Hidden honeypot inputs to trap browser autofill engines -->
+            <input type="text" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1" autocomplete="off">
+            <input type="password" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1" autocomplete="new-password">
+
             <label>Email Address</label>
             <div class="input-box">
                 <div class="input-icon">✉</div>
                 <input type="email"
                        name="email"
+                       id="email"
                        placeholder="Enter your Gmail address"
-                       autocomplete="off"
+                       autocomplete="new-password"
                        autocapitalize="none"
                        spellcheck="false"
-                       value="{{ request.form.get('email', '') }}"
+                       value=""
+                       readonly
+                       onfocus="this.removeAttribute('readonly');"
+                       onpointerdown="this.removeAttribute('readonly');"
                        required>
             </div>
 
@@ -156,7 +164,11 @@
                        name="password"
                        id="password"
                        placeholder="Enter your password"
-                       autocomplete="current-password"
+                       autocomplete="new-password"
+                       value=""
+                       readonly
+                       onfocus="this.removeAttribute('readonly');"
+                       onpointerdown="this.removeAttribute('readonly');"
                        required>
                 <button type="button" class="show-btn" onclick="togglePassword()" aria-label="Toggle password visibility">👁</button>
             </div>
@@ -189,6 +201,29 @@ function toggleNewPassword(){
         p.type = p.type === "password" ? "text" : "password";
     }
 }
+
+// Strictly prevent browser autofill and force clean empty inputs on load
+function clearLoginInputs() {
+    const em = document.getElementById("email");
+    const pw = document.getElementById("password");
+    if (em && em.hasAttribute("readonly")) {
+        em.value = "";
+    }
+    if (pw && pw.hasAttribute("readonly")) {
+        pw.value = "";
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    clearLoginInputs();
+    setTimeout(clearLoginInputs, 50);
+    setTimeout(clearLoginInputs, 200);
+    setTimeout(clearLoginInputs, 400);
+});
+
+window.addEventListener("pageshow", function() {
+    clearLoginInputs();
+});
 </script>
 
 </body>
