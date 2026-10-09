@@ -1046,10 +1046,8 @@ def login():
         session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
         if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-            session["dev_otp"] = otp
             flash(f"Login OTP: {otp} (Test Mode: Enter this 6-digit code below to log in)", "info")
         else:
-            session.pop("dev_otp", None)
             flash(f"A 6-digit OTP code has been sent to {user['email']}.", "info")
         return redirect(url_for("verify_otp"))
 
@@ -1079,13 +1077,13 @@ def verify_otp():
         try:
             expiry_time = datetime.fromisoformat(otp_expiry)
         except (ValueError, TypeError):
-            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry", "dev_otp"]:
+            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
                 session.pop(k, None)
             flash("OTP session expired. Please login again.", "danger")
             return redirect(url_for("login"))
 
         if datetime.now() > expiry_time:
-            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry", "dev_otp"]:
+            for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
                 session.pop(k, None)
             flash("OTP has expired (valid 5 minutes). Please login again to request a new code.", "danger")
             return redirect(url_for("login"))
@@ -1094,8 +1092,7 @@ def verify_otp():
             return render_template(
                 "verify_otp.html",
                 error="Invalid OTP code. Please enter the correct 6-digit code sent to your Gmail.",
-                email=pending_email,
-                dev_otp=session.get("dev_otp")
+                email=pending_email
             )
 
         # OTP verified successfully: Log user in
@@ -1111,7 +1108,7 @@ def verify_otp():
         merge_guest_cart_and_wishlist(user_id)
 
         # Clean pending authentication session
-        for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry", "dev_otp"]:
+        for k in ["pending_user_id", "pending_email", "pending_fullname", "pending_is_admin", "login_otp_hash", "login_otp_expiry"]:
             session.pop(k, None)
 
         flash(f"Welcome back, {fullname}! You have successfully logged in.", "success")
@@ -1120,8 +1117,7 @@ def verify_otp():
             return redirect(url_for("admin_dashboard"))
         return redirect(url_for("home"))
 
-    dev_code = session.get("dev_otp")
-    return render_template("verify_otp.html", email=pending_email, dev_otp=dev_code)
+    return render_template("verify_otp.html", email=pending_email)
 
 
 @app.route("/resend-otp")
@@ -1143,10 +1139,8 @@ def resend_otp():
     session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
     if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-        session["dev_otp"] = otp
         flash(f"New Login OTP: {otp} (Test Mode: Enter this 6-digit code below to log in)", "info")
     else:
-        session.pop("dev_otp", None)
         flash("A fresh 6-digit OTP code has been sent to your Gmail.", "success")
     return redirect(url_for("verify_otp"))
 
@@ -1184,9 +1178,7 @@ def forgot_password():
         session["forgot_otp_hash"] = hash_otp(otp)
         session["forgot_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        dev_code = None
         if isinstance(delivery, dict) and delivery.get("sandbox_mode"):
-            dev_code = otp
             success_msg = f"Reset OTP: {otp} (Test Mode: Enter this 6-digit code below to set new password)"
         else:
             success_msg = "Password reset OTP sent successfully to your Gmail."
@@ -1195,7 +1187,6 @@ def forgot_password():
             "login.html",
             forgot_otp_mode=True,
             otp_email=user["email"],
-            dev_otp=dev_code,
             message=success_msg
         )
 
