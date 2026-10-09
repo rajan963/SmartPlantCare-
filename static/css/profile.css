@@ -8,7 +8,7 @@
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 32px;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 

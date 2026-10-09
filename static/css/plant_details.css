@@ -16,7 +16,7 @@
 
 .product-detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(320px, 480px) 1fr;
   gap: 48px;
 }
 
