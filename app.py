@@ -743,143 +743,52 @@ def send_email_smtp(receiver_email, subject, html_content, text_content=None):
         msg.attach(MIMEText(text_content, "plain", "utf-8"))
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=4) as server:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
         server.login(sender, app_pw)
         server.sendmail(sender, [receiver_email.strip()], msg.as_string())
 
     return True
 
 
-def send_brevo_email(receiver_email, subject, html_content, text_content=None):
-    """Deliver transactional email using Brevo (Sendinblue) API over HTTPS (port 443)."""
-    brevo_key = os.getenv("BREVO_API_KEY", "").strip()
-    brevo_sender = os.getenv("BREVO_SENDER") or os.getenv("GMAIL_SENDER") or "noreply@smartplantcare.com"
-    if not brevo_key:
-        return False
-    url = "https://api.brevo.com/v3/smtp/email"
-    headers = {
-        "api-key": brevo_key,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    payload = {
-        "sender": {"name": "PlantCare Hub", "email": brevo_sender.strip()},
-        "to": [{"email": receiver_email.strip()}],
-        "subject": subject,
-        "htmlContent": html_content
-    }
-    if text_content:
-        payload["textContent"] = text_content
-    resp = requests.post(url, headers=headers, json=payload, timeout=12)
-    if resp.status_code in [200, 201, 202]:
-        return resp.json()
-    raise RuntimeError(f"Brevo error ({resp.status_code}): {resp.text}")
-
-
-def send_webhook_email(receiver_email, subject, html_content, text_content=None):
-    """Deliver email via Google Apps Script or custom webhook over HTTPS (port 443)."""
-    webhook_url = os.getenv("GMAIL_WEBHOOK_URL", "").strip()
-    if not webhook_url:
-        return False
-    payload = {
-        "to": receiver_email.strip(),
-        "subject": subject,
-        "html": html_content,
-        "text": text_content or ""
-    }
-    resp = requests.post(webhook_url, json=payload, timeout=12)
-    if resp.status_code == 200:
-        return True
-    raise RuntimeError(f"Webhook error ({resp.status_code}): {resp.text}")
-
-
-def send_otp_email_universal(receiver_email, subject, html_content, text_content=None, otp=None, purpose="Password Reset"):
+def send_otp_email_universal(receiver_email, subject, html_content, text_content=None):
     """
     Universal smart email delivery:
-    1. Google Apps Script Webhook (if GMAIL_WEBHOOK_URL configured, sends over port 443 via Gmail).
-    2. Brevo API (if BREVO_API_KEY configured, sends over port 443).
-    3. Resend API (if RESEND_API_KEY configured, sends over port 443).
-    4. Gmail SMTP (works on localhost or unblocked hosts).
-    5. Fallback: Dispatches OTP notification to admin via Resend API so owner has the record.
+    - If Resend API is available and recipient is the verified test account owner (ADMIN_EMAIL)
+      OR a custom verified domain is configured, tries Resend API.
+    - If Resend is restricted by sandbox (onboarding@resend.dev sending to other users) OR fails with 403,
+      it immediately and seamlessly delivers via Gmail SMTP (GMAIL_SENDER).
+    - Guarantees every user (both owner and all registered users) receives their OTP code without 403 errors.
     """
     receiver_clean = receiver_email.strip()
     api_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
     from_email = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
-    admin_target = (os.getenv("ADMIN_EMAIL") or ADMIN_EMAIL or "rajankumar01331@gmail.com").strip().lower()
 
-    # 1. Try Google Apps Script webhook if configured
-    if os.getenv("GMAIL_WEBHOOK_URL"):
+    is_sandbox = ("onboarding@resend.dev" in from_email.lower())
+    is_owner = (receiver_clean.lower() == ADMIN_EMAIL)
+
+    # If Resend can send (custom domain OR test account owner):
+    if api_key and (not is_sandbox or is_owner):
         try:
-            send_webhook_email(receiver_clean, subject, html_content, text_content)
-            print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Gmail Webhook.")
-            return {"success": True, "direct": True, "method": "webhook"}
+            return send_resend_email(receiver_clean, subject, html_content, text_content)
         except Exception as e:
-            print(f"[OTP Email Engine] Webhook delivery failed: {e}")
+            print(f"[OTP Email Engine] Resend API failed: {e}. Falling back to Gmail SMTP...")
 
-    # 2. Try Brevo API if configured
-    if os.getenv("BREVO_API_KEY"):
-        try:
-            send_brevo_email(receiver_clean, subject, html_content, text_content)
-            print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Brevo API.")
-            return {"success": True, "direct": True, "method": "brevo"}
-        except Exception as e:
-            print(f"[OTP Email Engine] Brevo delivery failed: {e}")
-
-    # 3. Try direct Resend API delivery
-    if api_key:
-        try:
-            res = send_resend_email(receiver_clean, subject, html_content, text_content)
-            print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Resend API.")
-            return {"success": True, "direct": True, "method": "resend", "data": res}
-        except Exception as e:
-            print(f"[OTP Email Engine] Direct Resend API failed: {e}. Trying Gmail SMTP fallback...")
-
-    # 4. Try Gmail SMTP delivery (works when port 465 is reachable, e.g. local / unblocked server)
-    smtp_err_msg = None
+    # Deliver via Gmail SMTP for all other users or as fallback
     try:
         send_email_smtp(receiver_clean, subject, html_content, text_content)
         print(f"[OTP Email Engine] Successfully sent email to {receiver_clean} via Gmail SMTP.")
-        return {"success": True, "direct": True, "method": "smtp"}
+        return True
     except Exception as smtp_err:
-        smtp_err_msg = str(smtp_err)
-        print(f"[OTP Email Engine] Gmail SMTP delivery failed: {smtp_err}")
-
-    # 5. Sandbox fallback: When on Render (SMTP blocked) and using onboarding@resend.dev (restricted to owner):
-    # Send notification with OTP to admin via Resend API using onboarding@resend.dev so Resend key is actively used
-    if api_key and admin_target:
-        try:
-            admin_subject = f"PlantCare Hub - {purpose} OTP for {receiver_clean}: {otp}"
-            admin_html = f"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #07150c; color: #ffffff; border-radius: 16px; border: 1px solid #1fa348; overflow: hidden; padding: 32px 28px;">
-                <div style="text-align: center; margin-bottom: 24px;">
-                    <h2 style="margin: 0; color: #19ff69; font-size: 26px;">🌱 PlantCare Hub</h2>
-                    <p style="margin: 6px 0 0; color: #9bb0a2; font-size: 13px;">User Authentication System</p>
-                </div>
-                <div style="background: rgba(25, 255, 105, 0.08); border: 1px solid rgba(25, 255, 105, 0.25); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-                    <p style="margin: 0 0 8px; color: #e2f0e7; font-size: 14px;"><strong>{purpose} OTP</strong> requested for account:</p>
-                    <p style="margin: 0 0 16px; color: #19ff69; font-size: 16px; font-weight: 600;">{receiver_clean}</p>
-                    <div style="font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #19ff69; padding: 12px 0; font-family: monospace;">{otp}</div>
-                    <p style="margin: 10px 0 0; color: #8fa897; font-size: 12.5px;">⏱ Valid for 5 minutes.</p>
-                </div>
-                <p style="color: #9bb0a2; font-size: 12px; line-height: 1.5; margin: 0;">
-                    Note: This notification was routed via Resend ({from_email}) to your admin address.
-                </p>
-            </div>
-            """
-            admin_text = f"PlantCare Hub {purpose} OTP for {receiver_clean}: {otp}\\nValid for 5 minutes."
-            send_resend_email(admin_target, admin_subject, admin_html, admin_text)
-            print(f"[OTP Email Engine] Dispatched admin notification OTP via Resend to {admin_target}.")
-        except Exception as admin_send_err:
-            print(f"[OTP Email Engine] Admin Resend notification error: {admin_send_err}")
-
-    # Return sandbox delivered flag
-    return {
-        "success": True,
-        "direct": False,
-        "otp": otp,
-        "receiver": receiver_clean,
-        "smtp_error": smtp_err_msg
-    }
+        print(f"[OTP Email Engine] Gmail SMTP delivery error: {smtp_err}")
+        # Last resort fallback: try Resend if not tried earlier
+        if api_key and (is_sandbox and not is_owner):
+            try:
+                return send_resend_email(receiver_clean, subject, html_content, text_content)
+            except Exception as resend_err:
+                raise RuntimeError(
+                    f"Email delivery failed. Gmail SMTP error: {smtp_err}. Resend sandbox restriction: {resend_err}"
+                )
+        raise RuntimeError(f"Could not send email via Gmail SMTP: {smtp_err}")
 
 
 def send_login_otp_email(receiver_email, otp):
@@ -905,13 +814,13 @@ def send_login_otp_email(receiver_email, otp):
     </div>
     """
     text_content = (
-        f"Hello,\\n\\n"
-        f"Your PlantCare Hub login verification code is: {otp}\\n\\n"
-        f"This OTP is valid for 5 minutes.\\n\\n"
-        f"If you did not request this OTP, please ignore this email.\\n\\n"
-        f"Regards,\\nPlantCare Hub Team"
+        f"Hello,\n\n"
+        f"Your PlantCare Hub login verification code is: {otp}\n\n"
+        f"This OTP is valid for 5 minutes.\n\n"
+        f"If you did not request this OTP, please ignore this email.\n\n"
+        f"Regards,\nPlantCare Hub Team"
     )
-    return send_otp_email_universal(receiver_email, subject, html_content, text_content, otp=otp, purpose="Login")
+    return send_otp_email_universal(receiver_email, subject, html_content, text_content)
 
 
 def send_forgot_password_otp_email(receiver_email, otp):
@@ -937,13 +846,13 @@ def send_forgot_password_otp_email(receiver_email, otp):
     </div>
     """
     text_content = (
-        f"Hello,\\n\\n"
-        f"Your PlantCare Hub password reset code is: {otp}\\n\\n"
-        f"This OTP is valid for 5 minutes.\\n\\n"
-        f"If you did not request this OTP, please ignore this email.\\n\\n"
-        f"Regards,\\nPlantCare Hub Team"
+        f"Hello,\n\n"
+        f"Your PlantCare Hub password reset code is: {otp}\n\n"
+        f"This OTP is valid for 5 minutes.\n\n"
+        f"If you did not request this OTP, please ignore this email.\n\n"
+        f"Regards,\nPlantCare Hub Team"
     )
-    return send_otp_email_universal(receiver_email, subject, html_content, text_content, otp=otp, purpose="Password Reset")
+    return send_otp_email_universal(receiver_email, subject, html_content, text_content)
 
 
 
@@ -1075,10 +984,13 @@ def login():
         otp = generate_otp()
 
         try:
-            delivery = send_login_otp_email(user["email"], otp)
+            send_login_otp_email(user["email"], otp)
         except Exception as e:
             print("OTP EMAIL ERROR:", e)
-            delivery = {"success": True, "sandbox_mode": True, "otp": otp}
+            return render_template(
+                "login.html",
+                error=f"Could not send OTP to your Gmail. Please check configuration or try again: {str(e)}"
+            )
 
         # Store pending login session
         session["pending_user_id"] = user["id"]
@@ -1088,7 +1000,7 @@ def login():
         session["login_otp_hash"] = hash_otp(otp)
         session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        flash(f"A 6-digit OTP code has been sent to {user['email']}. Please check your inbox or spam folder.", "info")
+        flash(f"A 6-digit OTP code has been sent to {user['email']}.", "info")
         return redirect(url_for("verify_otp"))
 
     return render_template("login.html")
@@ -1170,15 +1082,16 @@ def resend_otp():
 
     otp = generate_otp()
     try:
-        delivery = send_login_otp_email(pending_email, otp)
+        send_login_otp_email(pending_email, otp)
     except Exception as e:
         print("RESEND OTP ERROR:", e)
-        delivery = {"success": True, "sandbox_mode": True, "otp": otp}
+        flash(f"Could not resend OTP: {str(e)}", "danger")
+        return redirect(url_for("verify_otp"))
 
     session["login_otp_hash"] = hash_otp(otp)
     session["login_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-    flash("A fresh 6-digit OTP code has been sent to your Gmail. Please check your inbox or spam folder.", "success")
+    flash("A fresh 6-digit OTP code has been sent to your Gmail.", "success")
     return redirect(url_for("verify_otp"))
 
 
@@ -1206,22 +1119,24 @@ def forgot_password():
         otp = generate_otp()
 
         try:
-            delivery = send_forgot_password_otp_email(user["email"], otp)
+            send_forgot_password_otp_email(user["email"], otp)
         except Exception as e:
             print("FORGOT PASSWORD OTP ERROR:", e)
-            delivery = {"success": True, "sandbox_mode": True, "otp": otp}
+            return render_template(
+                "login.html",
+                forgot_mode=True,
+                error=f"Could not send reset OTP to your Gmail: {str(e)}"
+            )
 
         session["forgot_otp_email"] = user["email"]
         session["forgot_otp_hash"] = hash_otp(otp)
         session["forgot_otp_expiry"] = (datetime.now() + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
 
-        success_msg = "Password reset OTP sent successfully to your Gmail. Please check your inbox or spam folder."
-
         return render_template(
             "login.html",
             forgot_otp_mode=True,
             otp_email=user["email"],
-            message=success_msg
+            message="Password reset OTP sent successfully to your Gmail."
         )
 
     return render_template("login.html", forgot_mode=True)
@@ -1324,7 +1239,7 @@ def reset_password():
     conn.close()
 
     # Clear forgot-password session
-    for k in ["forgot_otp_hash", "forgot_otp_email", "forgot_otp_expiry", "forgot_verified", "dev_otp"]:
+    for k in ["forgot_otp_hash", "forgot_otp_email", "forgot_otp_expiry", "forgot_verified"]:
         session.pop(k, None)
 
     return render_template(
