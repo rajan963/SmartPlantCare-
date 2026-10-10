@@ -9,14 +9,10 @@
 <body>
 <div class="card">
     <div class="logo">
-        <span class="plant">🌱</span> PlantCare <span class="green">Hub</span>
+        PlantCare <span class="green">Hub</span>
     </div>
 
     <h1>Create Account</h1>
-
-    <div class="sub">
-        Join PlantCare Hub — The Future of Smart Agriculture
-    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -56,29 +52,22 @@
         </div>
 
         <div class="field">
-            <label for="reg_user_login">Username</label>
+            <label for="reg_user_password">Password</label>
             <div class="input-box">
-                <input type="text" id="reg_user_login" name="reg_user_login"
-                       placeholder="Create username"
-                       value=""
-                       autocomplete="off" autocapitalize="none" spellcheck="false" required>
+                <input type="password" id="reg_user_password" name="reg_user_password"
+                       placeholder="Create password (min. 6 characters)"
+                       autocomplete="new-password" minlength="6" required>
             </div>
         </div>
 
         <div class="field">
-            <label for="reg_user_password">Password</label>
+            <label for="reg_user_confirm_password">Confirm Password</label>
             <div class="input-box">
-                <input type="password" id="reg_user_password" name="reg_user_password"
-                       class="password-input" placeholder="Create password (min. 6 characters)"
+                <input type="password" id="reg_user_confirm_password" name="reg_user_confirm_password"
+                       placeholder="Confirm your password"
                        autocomplete="new-password" minlength="6" required>
-                <span class="eye" onclick="togglePassword()" id="eye" title="Show/Hide Password">👁</span>
             </div>
         </div>
-
-        <label class="agreement">
-            <input type="checkbox" name="agreement" required>
-            <span>I agree to use PlantCare Hub responsibly.</span>
-        </label>
 
         <button type="submit" class="register-btn">Create Account →</button>
     </form>
@@ -90,20 +79,8 @@
 </div>
 
 <script>
-function togglePassword(){
-    const password = document.getElementById("reg_user_password");
-    const eye = document.getElementById("eye");
-    if(password.type === "password"){
-        password.type = "text";
-        eye.textContent = "🙈";
-    } else {
-        password.type = "password";
-        eye.textContent = "👁";
-    }
-}
-
 function clearRegisterInputs() {
-    ["reg_user_fullname", "reg_user_email", "reg_user_login", "reg_user_password"].forEach(function(id) {
+    ["reg_user_fullname", "reg_user_email", "reg_user_password", "reg_user_confirm_password"].forEach(function(id) {
         const el = document.getElementById(id);
         if (el) el.value = "";
     });

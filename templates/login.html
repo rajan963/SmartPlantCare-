@@ -12,7 +12,7 @@
 
     {% if forgot_mode %}
         <!-- FORGOT PASSWORD: ENTER EMAIL -->
-        <div class="brand">🌿 PlantCare <span>Hub</span></div>
+        <div class="brand">PlantCare <span>Hub</span></div>
         <div class="otp-icon">🔑</div>
         <h1 class="otp-title">Forgot Password?</h1>
         <div class="otp-text">Enter your registered Gmail address.<br>We will send you a secure OTP.</div>
@@ -121,7 +121,7 @@
 
     {% else %}
         <!-- STANDARD LOGIN FORM -->
-        <div class="brand">🌿 PlantCare <span>Hub</span></div>
+        <div class="brand">PlantCare <span>Hub</span></div>
         <h1>Welcome Back</h1>
         <div class="subtitle">Sign in securely to access your smart plant dashboard.</div>
 
@@ -143,7 +143,6 @@
 
             <label>Email Address</label>
             <div class="input-box">
-                <div class="input-icon">✉</div>
                 <input type="text"
                        inputmode="email"
                        name="auth_email"
@@ -158,7 +157,6 @@
 
             <label>Password</label>
             <div class="input-box">
-                <div class="input-icon">🔒</div>
                 <input type="password"
                        name="auth_password"
                        id="auth_password"
@@ -166,7 +164,6 @@
                        autocomplete="new-password"
                        value=""
                        required>
-                <button type="button" class="show-btn" onclick="togglePassword()" aria-label="Toggle password visibility">👁</button>
             </div>
 
             <div class="forgot"><a href="/forgot-password">Forgot Password?</a></div>
@@ -175,7 +172,7 @@
             <a href="/" class="home-btn">← Go to Home</a>
         </form>
 
-        <div class="security">🔐 <span>Gmail verification</span> will be used to secure your login.</div>
+        <div class="security"><span>Gmail verification</span> will be used to secure your login.</div>
         <div class="bottom">Don't have an account? <a href="/register">Create Account</a></div>
 
     {% endif %}

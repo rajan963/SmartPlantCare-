@@ -977,11 +977,18 @@ def register():
     if request.method == "POST":
         fullname = (request.form.get("reg_user_fullname") or request.form.get("fullname") or "").strip()
         email = (request.form.get("reg_user_email") or request.form.get("email") or "").strip().lower()
-        username = (request.form.get("reg_user_login") or request.form.get("username") or "").strip()
         password = request.form.get("reg_user_password") or request.form.get("password") or ""
+        confirm_password = request.form.get("reg_user_confirm_password") or ""
 
-        if not fullname or not email or not username or not password:
+        # Auto-generate username from email local part
+        username = email.split("@")[0] if "@" in email else email
+
+        if not fullname or not email or not password:
             return render_template("register.html", error="Please fill in all required fields.")
+
+        if "confirm_password" in request.form or request.form.get("reg_user_confirm_password"):
+            if password != confirm_password:
+                return render_template("register.html", error="Passwords do not match. Please try again.")
 
         if "@" not in email or "." not in email:
             return render_template("register.html", error="Please enter a valid Gmail / email address.")
@@ -998,11 +1005,12 @@ def register():
             conn.close()
             return render_template("register.html", error="An account with this Gmail address already exists! Please login.")
 
-        # Check duplicate username
-        existing_user = cur.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),)).fetchone()
-        if existing_user:
-            conn.close()
-            return render_template("register.html", error="This username is already taken. Please choose another username.")
+        # Ensure username is unique (append number if needed)
+        base_username = username
+        counter = 1
+        while cur.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),)).fetchone():
+            username = f"{base_username}{counter}"
+            counter += 1
 
         hashed_password = generate_password_hash(password)
         is_admin_flag = 1 if email == ADMIN_EMAIL else 0
