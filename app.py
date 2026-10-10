@@ -23,7 +23,8 @@ from flask import (
     url_for,
     session,
     flash,
-    make_response
+    make_response,
+    jsonify
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -52,6 +53,7 @@ BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "").strip()
 GMAIL_SENDER = os.getenv("GMAIL_SENDER", "rajandas9080@gmail.com").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 OTP_EXPIRY_MINUTES = 5
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -1463,6 +1465,127 @@ def categories():
             })
 
     return render_template("categories.html", categories_data=categories_data)
+
+
+# ==============================================================================
+# PLANTCARE AI - CHATBOT & PLANT HEALTH DIAGNOSIS
+# ==============================================================================
+PLANTCARE_AI_SYSTEM_PROMPT = """You are PlantCare AI 🌱, an expert botanical and gardening AI assistant for PlantCare Hub.
+
+YOUR DOMAIN & EXPERTISE:
+You specialize EXCLUSIVELY in plants, gardening, plant care, plant diseases, watering, sunlight, soil, fertilizers, pest control, indoor/outdoor plants, seeds, and home/balcony gardening.
+Questions can be asked in English, Hindi, or Hinglish (for example: "Mere plant ke leaves yellow kyun ho rahe hain?", "Plant ko kitna paani dena chahiye?", "Tulsi soil mix", "Insects spray", "Money plant ki dekhbhal").
+ALWAYS answer all plant and gardening questions enthusiastically, warmly, and helpfully!
+
+STRICT GUARDRAIL FOR UNRELATED TOPICS:
+If and ONLY if the user asks about completely unrelated, non-plant topics (such as movies, cinema, cricket, sports, politics, celebrities, tech/coding, news, or general non-nature subjects), you MUST decline politely by replying:
+"I am PlantCare AI 🌱. I can help you with plant care, plant diseases, watering, sunlight, soil, fertilizers, and gardening questions. Please ask me anything related to plants!"
+(If the user's question was in Hindi/Hinglish, you may add: "कृपया पौधों और बागवानी (gardening) से जुड़े सवाल पूछें 🌱")
+Never answer off-topic queries under any circumstance.
+
+GUIDELINES FOR ANSWERING:
+1. Language: Answer in the same language the user used (Hindi, Hinglish, or English). Keep your language simple, friendly, and easy to understand.
+2. Step-by-Step Simple Solutions: Always organize remedies, diagnoses, and care instructions into clear numbered steps (1, 2, 3...) so anyone can follow them easily at home.
+3. Plant Care & Problems:
+   - Watering: Explain the finger-moisture check (mitti me 1-2 inch ungli daal kar check karein), proper drainage, signs of overwatering vs underwatering.
+   - Sunlight: Specify direct sunlight, bright indirect light, or shade requirements.
+   - Fertilizer: Recommend feeding schedules, organic fertilizers (vermicompost, cow dung manure, mustard cake liquid / sarson khali, banana peel water). Warn against over-fertilizing during dormancy/winters.
+   - Growth Boost: Suggest aeration (gudai), pruning dead/dry leaves, wiping dust off foliage, repotting when root-bound.
+   - Yellow Leaves & Brown Spots: Identify causes (overwatering, sunburn, low humidity, nutrient deficiency, fungal spots) and give exact remedies.
+   - Insects/Pests: For mealybugs, aphids, spider mites, recommend organic remedies first (neem oil spray with mild liquid soap in water, water jet spray) before harsh chemicals.
+   - Detailed Plant Info: Provide exact care tips for Money Plant (pothos), Tulsi (holy basil - well drained holy soil mix), Aloe Vera (succulent mix, avoid overwatering), Snake Plant, Peace Lily, etc.
+   - Plant Recommendations: Suggest suitable plants for indoor spaces, bedrooms, balconies, low-light corners, or air-purification.
+4. Follow-up Questions: Remember conversation context and encourage follow-ups.
+5. Safety & Photo Diagnosis:
+   - Always prioritize organic/safe methods. If suggesting chemical pesticides or fertilizers, provide essential safety warnings (wear gloves, mask, proper dilution, keep away from pets and children).
+   - When diagnosing from a photo or symptom description, describe what you visually observe and mention that exact diagnosis may depend on checking soil moisture, pot drainage, and looking underneath leaves.
+"""
+
+@app.route("/plantcare-ai")
+def plantcare_ai():
+    return render_template("plantcare_ai.html")
+
+
+@app.route("/api/plantcare-ai/chat", methods=["POST"])
+def plantcare_ai_chat():
+    data = request.get_json(silent=True) or {}
+    user_message = (data.get("message") or "").strip()
+    image_data = data.get("image")  # base64 data URL: data:image/...;base64,...
+    history = data.get("history") or []
+
+    if not user_message and not image_data:
+        return jsonify({"error": "Please provide a question or upload a plant photo."}), 400
+
+    api_key = OPENROUTER_API_KEY
+    if not api_key:
+        return jsonify({"error": "OpenRouter API Key is not configured in .env file."}), 500
+
+    # Build messages list
+    messages = [{"role": "system", "content": PLANTCARE_AI_SYSTEM_PROMPT}]
+
+    # Include recent conversation turns (up to 6)
+    if isinstance(history, list):
+        for turn in history[-6:]:
+            if isinstance(turn, dict) and turn.get("role") in ("user", "assistant") and turn.get("content"):
+                text_content = turn.get("content")
+                if isinstance(text_content, str) and text_content.strip():
+                    messages.append({
+                        "role": turn["role"],
+                        "content": text_content.strip()
+                    })
+
+    # Add current user prompt
+    if image_data:
+        prompt_text = user_message if user_message else "Please diagnose this plant from the image: identify the plant if possible, evaluate its health, detect any yellowing, brown spots, pest attacks or diseases, and provide clear step-by-step care and remedies."
+        user_content = [
+            {"type": "text", "text": prompt_text},
+            {"type": "image_url", "image_url": {"url": image_data}}
+        ]
+        messages.append({"role": "user", "content": user_content})
+    else:
+        messages.append({"role": "user", "content": user_message})
+
+    # Models list: primary and fallback
+    models_to_try = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"]
+    last_error = None
+
+    for model_name in models_to_try:
+        try:
+            req_payload = {
+                "model": model_name,
+                "max_tokens": 1200,
+                "temperature": 0.7,
+                "messages": messages
+            }
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://plantcarehub.com",
+                "X-Title": "PlantCare Hub AI"
+            }
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=req_payload,
+                timeout=45
+            )
+
+            if resp.status_code == 200:
+                res_data = resp.json()
+                reply = res_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if reply:
+                    return jsonify({"reply": reply})
+            else:
+                last_error = f"API Error ({resp.status_code}): {resp.text}"
+                print(f"[PlantCare AI] Model {model_name} failed: {resp.status_code} - {resp.text[:200]}")
+        except Exception as e:
+            last_error = str(e)
+            print(f"[PlantCare AI] Exception calling {model_name}: {e}")
+
+    return jsonify({
+        "error": "I couldn't process your request right now. Please check your internet connection or try again in a moment.",
+        "details": last_error
+    }), 502
 
 
 # ==============================================================================

@@ -135,6 +135,27 @@ button, input, select, textarea {
   color: var(--primary);
 }
 
+.plantcare-ai-nav-btn {
+  background: linear-gradient(135deg, rgba(21, 128, 61, 0.08) 0%, rgba(16, 185, 129, 0.12) 100%);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  transition: var(--transition);
+}
+
+.plantcare-ai-nav-btn:hover,
+.plantcare-ai-nav-btn.active {
+  background: linear-gradient(135deg, #15803d 0%, #10b981 100%) !important;
+  color: #ffffff !important;
+  border-color: #10b981;
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25);
+}
+
+.plantcare-ai-nav-btn:hover i,
+.plantcare-ai-nav-btn.active i {
+  color: #ffffff !important;
+}
+
 .nav-actions {
   display: flex;
   align-items: center;

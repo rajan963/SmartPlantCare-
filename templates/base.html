@@ -15,13 +15,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-
-    <!-- Top Announcement Bar -->
-    <div class="top-announcement">
-        🌿 <strong>PlantCare Hub</strong>: Free Eco-friendly packaging & Fast Delivery on orders above ₹499! 🌱
-    </div>
-
-    <!-- Main Navigation Header -->
+<!-- Main Navigation Header -->
     <header class="site-header">
         <nav class="navbar">
             <a href="{{ url_for('home') }}" class="logo">
@@ -33,6 +27,7 @@
                 <li><a href="{{ url_for('home') }}"><i class="fa-solid fa-house"></i> Home</a></li>
                 <li><a href="{{ url_for('shop') }}"><i class="fa-solid fa-store"></i> Shop Plants</a></li>
                 <li><a href="{{ url_for('categories') }}"><i class="fa-solid fa-layer-group"></i> Categories</a></li>
+                <li><a href="{{ url_for('plantcare_ai') }}" class="plantcare-ai-nav-btn {% if request.endpoint == 'plantcare_ai' %}active{% endif %}"><i class="fa-solid fa-wand-magic-sparkles" style="color:#10b981;"></i> PlantCare AI</a></li>
                 {% if session.get('user') %}
                     <li><a href="{{ url_for('my_orders') }}"><i class="fa-solid fa-box-open"></i> My Orders</a></li>
                 {% endif %}
@@ -143,6 +138,7 @@
                     <li><a href="{{ url_for('home') }}">Home</a></li>
                     <li><a href="{{ url_for('shop') }}">Shop Plants</a></li>
                     <li><a href="{{ url_for('categories') }}">Browse Categories</a></li>
+                    <li><a href="{{ url_for('plantcare_ai') }}">PlantCare AI 🌱</a></li>
                     <li><a href="{{ url_for('cart') }}">Shopping Cart</a></li>
                     <li><a href="{{ url_for('my_orders') }}">Track Orders</a></li>
                 </ul>

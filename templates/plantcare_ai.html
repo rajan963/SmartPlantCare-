@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}PlantCare AI - Smart Plant & Gardening Assistant{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/plantcare_ai.css') }}">
+<!-- CDN for Markdown formatting & sanitized HTML -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="plantcare-ai-container">
+
+    <!-- Main Card Window (Matches image design) -->
+    <div class="ai-modal-card">
+        
+        <!-- Header -->
+        <div class="ai-modal-header">
+            <div class="ai-header-left">
+                <div class="ai-header-icon">
+                    <i class="fa-solid fa-seedling" style="color:#ffffff;"></i>
+                </div>
+                <div class="ai-header-title-wrap">
+                    <h3>PlantCare AI</h3>
+                    <p>Smart Plant & Gardening Assistant</p>
+                </div>
+            </div>
+
+            <div class="ai-header-right">
+                <span class="ai-online-status">
+                    <span class="ai-online-dot"></span> AI Online
+                </span>
+                <button type="button" id="clearChatBtn" class="ai-new-chat-btn" title="Reset chat">
+                    <i class="fa-solid fa-rotate-right"></i> Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Body / Messages Area -->
+        <div class="ai-modal-body" id="chatMessages">
+            <!-- Center Welcome Screen -->
+            <div class="ai-welcome-state" id="welcomeState">
+                <div class="ai-welcome-icon">
+                    <i class="fa-solid fa-leaf"></i>
+                </div>
+                <h2 class="ai-welcome-title">Welcome to PlantCare AI</h2>
+                <p class="ai-welcome-desc">
+                    Ask anything about plants, gardening, watering, soil, sunlight, fertilizer, diseases or upload a plant photo.
+                </p>
+            </div>
+        </div>
+
+        <!-- Image Preview Bar when Photo is Selected -->
+        <div class="ai-staged-bar" id="imageStagingBar">
+            <div class="ai-staged-img-box">
+                <img id="stagedImagePreview" src="" alt="Selected Plant Photo">
+                <button type="button" class="ai-remove-staged-btn" id="removeStagedImage" title="Remove photo">&times;</button>
+            </div>
+            <span class="ai-staged-text">
+                <i class="fa-solid fa-image"></i> Plant photo attached. Click send or ask a question!
+            </span>
+        </div>
+
+        <!-- Footer / Input Area -->
+        <div class="ai-modal-footer">
+            <form id="chatForm">
+                <!-- Hidden file input -->
+                <input type="file" id="imageInput" accept="image/*" style="display:none;">
+
+                <div class="ai-input-pill">
+                    <!-- Photo / Camera Button -->
+                    <button type="button" id="uploadPhotoBtn" class="ai-camera-btn" title="Attach plant photo for diagnosis">
+                        <i class="fa-solid fa-camera"></i>
+                    </button>
+
+                    <!-- Text input -->
+                    <input 
+                        type="text" 
+                        id="chatInput" 
+                        class="ai-text-field" 
+                        placeholder="Ask PlantCare AI anything..." 
+                        autocomplete="off"
+                    >
+
+                    <!-- Send button -->
+                    <button type="submit" id="sendBtn" class="ai-send-btn" title="Send message">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </form>
+            <div class="ai-modal-footnote">
+                PlantCare AI can analyze plant questions and plant photos 🌱
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const chatMessages = document.getElementById('chatMessages');
+    const welcomeState = document.getElementById('welcomeState');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    const uploadPhotoBtn = document.getElementById('uploadPhotoBtn');
+    const imageInput = document.getElementById('imageInput');
+    const imageStagingBar = document.getElementById('imageStagingBar');
+    const stagedImagePreview = document.getElementById('stagedImagePreview');
+    const removeStagedImage = document.getElementById('removeStagedImage');
+
+    let stagedImageDataUrl = null;
+    let conversationHistory = [];
+
+    // Trigger Photo File Dialog
+    uploadPhotoBtn.addEventListener('click', function () {
+        imageInput.click();
+    });
+
+    // Process Selected Image
+    imageInput.addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file (JPG, PNG, WebP).');
+            return;
+        }
+
+        if (file.size > 8 * 1024 * 1024) {
+            alert('Please choose an image under 8MB in size.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            stagedImageDataUrl = event.target.result;
+            stagedImagePreview.src = stagedImageDataUrl;
+            imageStagingBar.style.display = 'flex';
+            chatInput.focus();
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // Remove Staged Image
+    removeStagedImage.addEventListener('click', function () {
+        stagedImageDataUrl = null;
+        imageInput.value = '';
+        imageStagingBar.style.display = 'none';
+    });
+
+    // Reset Chat
+    clearChatBtn.addEventListener('click', function () {
+        conversationHistory = [];
+        stagedImageDataUrl = null;
+        imageInput.value = '';
+        imageStagingBar.style.display = 'none';
+        chatMessages.innerHTML = '';
+        if (welcomeState) {
+            chatMessages.appendChild(welcomeState);
+            welcomeState.style.display = 'block';
+        }
+        chatInput.focus();
+    });
+
+    // Submit Message Form
+    chatForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const messageText = chatInput.value.trim();
+        const currentImageData = stagedImageDataUrl;
+
+        if (!messageText && !currentImageData) {
+            return;
+        }
+
+        // Hide Welcome state on first message
+        if (welcomeState && welcomeState.style.display !== 'none') {
+            welcomeState.style.display = 'none';
+        }
+
+        // Disable input while sending
+        chatInput.disabled = true;
+        sendBtn.disabled = true;
+        uploadPhotoBtn.disabled = true;
+
+        // Render User Message in Chat
+        appendUserMessage(messageText, currentImageData);
+
+        // Reset inputs
+        chatInput.value = '';
+        stagedImageDataUrl = null;
+        imageInput.value = '';
+        imageStagingBar.style.display = 'none';
+
+        // Add Typing Indicator
+        const typingId = appendTypingIndicator();
+        scrollToBottom();
+
+        try {
+            const response = await fetch('/api/plantcare-ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: messageText,
+                    image: currentImageData,
+                    history: conversationHistory
+                })
+            });
+
+            removeTypingIndicator(typingId);
+
+            const data = await response.json();
+
+            if (response.ok && data.reply) {
+                // Render Bot Message
+                appendBotMessage(data.reply);
+                // Update conversation history
+                conversationHistory.push({ role: 'user', content: messageText || "Plant photo diagnosis" });
+                conversationHistory.push({ role: 'assistant', content: data.reply });
+                if (conversationHistory.length > 10) {
+                    conversationHistory = conversationHistory.slice(-10);
+                }
+            } else {
+                const errMsg = data.error || 'Sorry, could not process your plant query. Please try again.';
+                appendBotMessage(`⚠️ **Notice:** ${errMsg}`);
+            }
+        } catch (err) {
+            removeTypingIndicator(typingId);
+            appendBotMessage("⚠️ **Network Error:** Could not connect to PlantCare AI server. Please check your internet connection.");
+            console.error("PlantCare AI error:", err);
+        } finally {
+            chatInput.disabled = false;
+            sendBtn.disabled = false;
+            uploadPhotoBtn.disabled = false;
+            chatInput.focus();
+            scrollToBottom();
+        }
+    });
+
+    function appendUserMessage(text, imageData) {
+        const row = document.createElement('div');
+        row.className = 'chat-msg-row user';
+
+        let innerContent = '';
+        if (imageData) {
+            innerContent += `<img src="${imageData}" class="chat-msg-image" alt="Plant Image">`;
+        }
+        if (text) {
+            innerContent += `<div>${escapeHtml(text)}</div>`;
+        }
+
+        row.innerHTML = `
+            <div class="chat-msg-avatar"><i class="fa-solid fa-user"></i></div>
+            <div class="chat-msg-bubble">${innerContent}</div>
+        `;
+        chatMessages.appendChild(row);
+        scrollToBottom();
+    }
+
+    function appendBotMessage(markdownText) {
+        const row = document.createElement('div');
+        row.className = 'chat-msg-row bot';
+
+        let htmlContent = '';
+        if (typeof marked !== 'undefined') {
+            const rawHtml = marked.parse(markdownText || '');
+            htmlContent = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml) : rawHtml;
+        } else {
+            htmlContent = escapeHtml(markdownText).replace(/\n/g, '<br>');
+        }
+
+        row.innerHTML = `
+            <div class="chat-msg-avatar"><i class="fa-solid fa-seedling"></i></div>
+            <div class="chat-msg-bubble">${htmlContent}</div>
+        `;
+        chatMessages.appendChild(row);
+        scrollToBottom();
+    }
+
+    function appendTypingIndicator() {
+        const id = 'typing-' + Date.now();
+        const row = document.createElement('div');
+        row.className = 'chat-msg-row bot';
+        row.id = id;
+        row.innerHTML = `
+            <div class="chat-msg-avatar"><i class="fa-solid fa-seedling"></i></div>
+            <div class="ai-typing-wrap">
+                <div class="ai-typing-dot"></div>
+                <div class="ai-typing-dot"></div>
+                <div class="ai-typing-dot"></div>
+            </div>
+        `;
+        chatMessages.appendChild(row);
+        return id;
+    }
+
+    function removeTypingIndicator(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    function scrollToBottom() {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function escapeHtml(string) {
+        if (!string) return '';
+        return String(string)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+});
+</script>
+{% endblock %}
