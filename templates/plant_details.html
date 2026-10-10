@@ -38,17 +38,19 @@
 
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:18px;">
                 <div style="color:#eab308; font-size:0.95rem;">
-                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star-half-stroke"></i>
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                    <i class="fa-solid fa-star-half-stroke"></i>
                 </div>
                 <span style="font-weight:700; font-size:0.9rem;">4.8</span>
                 <span style="color:#64748b; font-size:0.85rem;">({{ plant.reviews_count or 18 }} verified customer reviews)</span>
             </div>
 
             <div class="detail-price-box">
-                <span class="detail-price">₹{{ "%.0f"|format(plant.price) }}</span>
+                <span class="detail-price">&#8377;{{ "%.0f" | format(plant.price) }}</span>
                 {% if plant.original_price and plant.original_price > plant.price %}
-                    <span class="detail-orig-price">₹{{ "%.0f"|format(plant.original_price) }}</span>
-                    <span class="detail-save-badge">Save ₹{{ "%.0f"|format(plant.original_price - plant.price) }}</span>
+                    <span class="detail-orig-price">&#8377;{{ "%.0f" | format(plant.original_price) }}</span>
+                    <span class="detail-save-badge">Save &#8377;{{ "%.0f" | format(plant.original_price - plant.price) }}</span>
                 {% endif %}
             </div>
 
@@ -73,17 +75,17 @@
             <!-- Care Specifications -->
             <div class="care-specs-grid">
                 <div class="spec-box">
-                    <div class="spec-icon">☀️</div>
+                    <div class="spec-icon">&#9728;&#65039;</div>
                     <h5>Sunlight</h5>
                     <p>{{ plant.sunlight or 'Bright Indirect' }}</p>
                 </div>
                 <div class="spec-box">
-                    <div class="spec-icon">💧</div>
+                    <div class="spec-icon">&#128167;</div>
                     <h5>Watering</h5>
                     <p>{{ plant.water or '2-3 Times / Week' }}</p>
                 </div>
                 <div class="spec-box">
-                    <div class="spec-icon">🌱</div>
+                    <div class="spec-icon">&#127807;</div>
                     <h5>Soil Type</h5>
                     <p>{{ plant.soil or 'Well-Drained Loamy' }}</p>
                 </div>
@@ -108,11 +110,21 @@
                     <button type="submit" name="buy_now" value="1" class="btn-buy-now">
                         <i class="fa-solid fa-bolt"></i> Buy Now
                     </button>
-                    <a href="{{ url_for('toggle_wishlist', id=plant.id) }}" class="btn-outline-light" style="border-color:#cbd5e1; color:#334155; padding:12px 18px;" title="Wishlist">
-                        <i class="fa-{% if plant.id in wishlist_ids %}solid{% else %}regular{% endif %} fa-heart" style="color:{% if plant.id in wishlist_ids %}#ef4444{% else %}inherit{% endif %};"></i>
+
+                    {% set in_wishlist = plant.id in wishlist_ids %}
+                    <a href="{{ url_for('toggle_wishlist', id=plant.id) }}"
+                       class="btn-outline-light"
+                       style="border-color:#cbd5e1; color:#334155; padding:12px 18px;"
+                       title="Wishlist">
+                        {% if in_wishlist %}
+                            <i class="fa-solid fa-heart heart-icon-active"></i>
+                        {% else %}
+                            <i class="fa-regular fa-heart heart-icon-inactive"></i>
+                        {% endif %}
                     </a>
                 </div>
             </form>
+
             {% else %}
             <div style="padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-weight:600;">
                 This plant is currently out of stock. Add it to your wishlist to receive restock updates!
@@ -126,9 +138,9 @@
 
             <!-- Guarantees -->
             <div style="margin-top:24px; padding-top:20px; border-top:1px solid #f1f5f9; display:flex; flex-direction:column; gap:8px; font-size:0.85rem; color:#64748b;">
-                <div><i class="fa-solid fa-truck" style="color:#15803d; margin-right:8px;"></i> Free shipping on orders over ₹499</div>
+                <div><i class="fa-solid fa-truck" style="color:#15803d; margin-right:8px;"></i> Free shipping on orders over &#8377;499</div>
                 <div><i class="fa-solid fa-shield-heart" style="color:#15803d; margin-right:8px;"></i> 7-Day Nursery Health Guarantee</div>
-                <div><i class="fa-solid fa-box" style="color:#15803d; margin-right:8px;"></i> Includes eco-pot & premium moisture retaining soil</div>
+                <div><i class="fa-solid fa-box" style="color:#15803d; margin-right:8px;"></i> Includes eco-pot &amp; premium moisture retaining soil</div>
             </div>
         </div>
     </div>
@@ -160,7 +172,7 @@
                 <h3 class="plant-name"><a href="{{ url_for('plant_details', id=rel.id) }}">{{ rel.name }}</a></h3>
                 <p class="plant-sci-name">{{ rel.scientific_name or 'Botanical species' }}</p>
                 <div class="plant-footer">
-                    <span class="current-price">₹{{ "%.0f"|format(rel.price) }}</span>
+                    <span class="current-price">&#8377;{{ "%.0f" | format(rel.price) }}</span>
                     <a href="{{ url_for('plant_details', id=rel.id) }}" class="btn-add-cart" style="padding:7px 14px; font-size:0.8rem;">
                         View Plant
                     </a>

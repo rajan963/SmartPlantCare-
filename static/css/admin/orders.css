@@ -119,3 +119,52 @@
     padding: 16px;
   }
 }
+
+/* ==========================================================================
+   Status Filter Pills
+   ========================================================================== */
+.filter-pills {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pill {
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.pill-all         { background: #ffffff;  color: #475569; border: 1px solid #e2e8f0; }
+.pill-all.active  { background: #15803d;  color: #ffffff; border-color: #15803d; }
+
+.pill-pending         { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+.pill-pending.active  { background: #eab308; color: #ffffff; border-color: #eab308; }
+
+.pill-accepted         { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.pill-accepted.active  { background: #16a34a; color: #ffffff; border-color: #16a34a; }
+
+.pill-shipped         { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+.pill-shipped.active  { background: #2563eb; color: #ffffff; border-color: #2563eb; }
+
+.pill-delivered         { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.pill-delivered.active  { background: #047857; color: #ffffff; border-color: #047857; }
+
+.pill-rejected         { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+.pill-rejected.active  { background: #dc2626; color: #ffffff; border-color: #dc2626; }
+
+/* ==========================================================================
+   Order Card — Left Border Color by Status
+   ========================================================================== */
+.order-card.status-pending   { border-left: 6px solid #eab308; }
+.order-card.status-accepted  { border-left: 6px solid #16a34a; }
+.order-card.status-shipped   { border-left: 6px solid #2563eb; }
+.order-card.status-delivered { border-left: 6px solid #047857; }
+.order-card.status-rejected  { border-left: 6px solid #ef4444; }
+.order-card.status-default   { border-left: 6px solid #94a3b8; }
+
