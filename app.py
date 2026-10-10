@@ -45,12 +45,10 @@ UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "avif"}
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "rajankumar01331@gmail.com").strip().lower()
 
-# Email Delivery Configuration (Universal Multi-Engine: Google Apps Script Relay, Brevo, Resend, Gmail SMTP)
+# Email Delivery Configuration (Universal: Brevo API, Google Apps Script Relay, Gmail SMTP)
 GMAIL_RELAY_URL = os.getenv("GMAIL_RELAY_URL", os.getenv("GMAIL_SCRIPT_URL", "")).strip()
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "").strip()
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev").strip()
 GMAIL_SENDER = os.getenv("GMAIL_SENDER", "rajandas9080@gmail.com").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 OTP_EXPIRY_MINUTES = 5
@@ -736,65 +734,50 @@ def send_brevo_email(receiver_email, subject, html_content, text_content=None):
     if not api_key:
         raise ValueError("BREVO_API_KEY is not configured.")
 
-    sender_email = (
-        os.getenv("BREVO_SENDER_EMAIL")
-        or BREVO_SENDER_EMAIL
-        or os.getenv("GMAIL_SENDER")
-        or GMAIL_SENDER
-        or "noreply@smartplantcare.com"
-    ).strip()
+    # Candidate sender emails to try:
+    explicit_sender = (os.getenv("BREVO_SENDER_EMAIL") or BREVO_SENDER_EMAIL or "").strip()
+    if explicit_sender:
+        candidate_senders = [explicit_sender]
+    else:
+        candidate_senders = []
+        for s in [
+            (os.getenv("GMAIL_SENDER") or GMAIL_SENDER or "").strip(),
+            (os.getenv("ADMIN_EMAIL") or ADMIN_EMAIL or "").strip(),
+            "rajandas9080@gmail.com",
+            "rajankumar01331@gmail.com"
+        ]:
+            if s and s not in candidate_senders:
+                candidate_senders.append(s)
 
+    sender_name = os.getenv("BREVO_SENDER_NAME", "PlantCare Hub").strip()
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
         "accept": "application/json",
         "api-key": api_key,
         "content-type": "application/json"
     }
-    payload = {
-        "sender": {"name": "PlantCare Hub", "email": sender_email},
-        "to": [{"email": receiver_email.strip()}],
-        "subject": subject,
-        "htmlContent": html_content
-    }
-    if text_content:
-        payload["textContent"] = text_content
 
-    resp = requests.post(url, json=payload, headers=headers, timeout=20)
-    if resp.status_code not in (200, 201):
-        raise RuntimeError(f"Brevo API error ({resp.status_code}): {resp.text}")
-    return resp.json()
+    last_error = None
+    for sender_email in candidate_senders:
+        payload = {
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": receiver_email.strip()}],
+            "subject": subject,
+            "htmlContent": html_content
+        }
+        if text_content:
+            payload["textContent"] = text_content
 
+        resp = requests.post(url, json=payload, headers=headers, timeout=20)
+        if resp.status_code in (200, 201):
+            return resp.json()
 
-def send_resend_email(receiver_email, subject, html_content, text_content=None):
-    """
-    Send transactional email using Resend API over HTTPS port 443.
-    Reads RESEND_API_KEY and RESEND_FROM_EMAIL from environment.
-    """
-    api_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
-    from_email = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
+        last_error = f"Brevo API error ({resp.status_code}) for sender {sender_email}: {resp.text}"
+        print(f"[Brevo API] Warning with sender {sender_email}: {resp.status_code} - {resp.text}")
+        if resp.status_code == 401:
+            break
 
-    if not api_key:
-        raise ValueError("RESEND_API_KEY is not configured in .env file.")
-
-    url = "https://api.resend.com/emails"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "from": from_email,
-        "to": [receiver_email.strip()],
-        "subject": subject,
-        "html": html_content
-    }
-    if text_content:
-        payload["text"] = text_content
-
-    response = requests.post(url, headers=headers, json=payload, timeout=20)
-    if response.status_code >= 400:
-        raise RuntimeError(f"Resend email failed ({response.status_code}): {response.text}")
-
-    return response.json()
+    raise RuntimeError(last_error or "Brevo API email dispatch failed.")
 
 
 def send_email_smtp(receiver_email, subject, html_content, text_content=None):
@@ -824,17 +807,15 @@ def send_email_smtp(receiver_email, subject, html_content, text_content=None):
 
 def send_otp_email_universal(receiver_email, subject, html_content, text_content=None, otp=None):
     """
-    Universal multi-tier smart email dispatcher:
-    1. Always logs OTP in server stdout (Render Logs) so developers/admins never get locked out.
-    2. Tier 1: Google Apps Script Web App Relay (GMAIL_RELAY_URL) -> Delivers to ANY email over HTTPS.
-    3. Tier 2: Brevo API (BREVO_API_KEY) -> Delivers to ANY email over HTTPS.
-    4. Tier 3: Resend API (RESEND_API_KEY) -> Delivers to ANY email if custom domain, or to account owner if sandbox.
-    5. Tier 4: Direct Gmail SMTP -> Delivers if port 465 is unblocked.
-    6. If delivery fails or is blocked by sandbox, raises an informative error.
+    Universal smart email delivery:
+    1. Tier 1 (Primary): Brevo REST API (BREVO_API_KEY) -> Delivers directly to ANY email (user or admin) over HTTPS port 443.
+    2. Tier 2: Google Apps Script Web App Relay (GMAIL_RELAY_URL) -> Fallback HTTPS relay.
+    3. Tier 3: Direct Gmail SMTP -> Delivers if port 465 is reachable.
+    - Sends directly to receiver_clean ONLY. Never forwards another user's OTP to admin!
     """
     receiver_clean = receiver_email.strip()
 
-    # 1. Always log OTP to server console (visible in Render logs)
+    # Always log OTP in server console for tracking
     if otp:
         print("\n" + "=" * 60, flush=True)
         print(f">> [OTP DISPATCH] Recipient: {receiver_clean} | Code: {otp}", flush=True)
@@ -842,18 +823,7 @@ def send_otp_email_universal(receiver_email, subject, html_content, text_content
 
     errors = []
 
-    # Tier 1: Google Apps Script Relay (HTTPS port 443 - zero domain required, sends to anyone)
-    relay_url = (os.getenv("GMAIL_RELAY_URL") or os.getenv("GMAIL_SCRIPT_URL") or GMAIL_RELAY_URL or "").strip()
-    if relay_url:
-        try:
-            send_gmail_relay_email(receiver_clean, subject, html_content, text_content)
-            print(f"[OTP Dispatch] Successfully sent OTP to {receiver_clean} via Google Apps Script Relay.")
-            return True
-        except Exception as e:
-            print(f"[OTP Dispatch] Google Apps Script Relay error: {e}")
-            errors.append(f"Google Apps Script Relay: {e}")
-
-    # Tier 2: Brevo REST API (HTTPS port 443 - sends to anyone)
+    # Tier 1 (Primary): Brevo REST API (HTTPS port 443 - free 300 emails/day to ANY recipient without domain restriction)
     brevo_key = (os.getenv("BREVO_API_KEY") or BREVO_API_KEY or "").strip()
     if brevo_key:
         try:
@@ -864,22 +834,18 @@ def send_otp_email_universal(receiver_email, subject, html_content, text_content
             print(f"[OTP Dispatch] Brevo API error: {e}")
             errors.append(f"Brevo API: {e}")
 
-    # Tier 3: Resend REST API (HTTPS port 443)
-    resend_key = (os.getenv("RESEND_API_KEY") or RESEND_API_KEY or "").strip()
-    resend_from = (os.getenv("RESEND_FROM_EMAIL") or RESEND_FROM_EMAIL or "onboarding@resend.dev").strip()
-    admin_target = (os.getenv("ADMIN_EMAIL") or ADMIN_EMAIL or "rajankumar01331@gmail.com").strip().lower()
-
-    if resend_key:
-        # First attempt direct delivery to recipient
+    # Tier 2: Google Apps Script Relay (HTTPS port 443)
+    relay_url = (os.getenv("GMAIL_RELAY_URL") or os.getenv("GMAIL_SCRIPT_URL") or GMAIL_RELAY_URL or "").strip()
+    if relay_url:
         try:
-            send_resend_email(receiver_clean, subject, html_content, text_content)
-            print(f"[OTP Dispatch] Successfully sent OTP to {receiver_clean} via Resend API.")
+            send_gmail_relay_email(receiver_clean, subject, html_content, text_content)
+            print(f"[OTP Dispatch] Successfully sent OTP to {receiver_clean} via Google Apps Script Relay.")
             return True
         except Exception as e:
-            print(f"[OTP Dispatch] Direct Resend to {receiver_clean} failed: {e}. Trying fallback...")
-            errors.append(f"Resend Direct: {e}")
+            print(f"[OTP Dispatch] Google Apps Script Relay error: {e}")
+            errors.append(f"Google Apps Script Relay: {e}")
 
-    # Tier 4: Gmail SMTP (Works on local machine or unblocked hosts)
+    # Tier 3: Direct Gmail SMTP (Localhost or unblocked hosts)
     gmail_sender = (os.getenv("GMAIL_SENDER") or GMAIL_SENDER or "").strip()
     gmail_pw = (os.getenv("GMAIL_APP_PASSWORD") or GMAIL_APP_PASSWORD or "").strip()
     if gmail_sender and gmail_pw:
@@ -890,37 +856,6 @@ def send_otp_email_universal(receiver_email, subject, html_content, text_content
         except Exception as e:
             print(f"[OTP Dispatch] Gmail SMTP error: {e}")
             errors.append(f"Gmail SMTP: {e}")
-
-    # Tier 5: Resend Sandbox Fallback (when on Render with onboarding@resend.dev):
-    # Resend restricts testing sends to account owner (admin_target).
-    # Dispatch notification containing OTP to admin_target so code is delivered to owner's inbox!
-    if resend_key and admin_target:
-        try:
-            admin_subject = f"PlantCare Hub - OTP for {receiver_clean}: {otp}"
-            admin_html = f"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #07150c; color: #ffffff; border-radius: 16px; border: 1px solid #1fa348; overflow: hidden; padding: 32px 28px;">
-                <div style="text-align: center; margin-bottom: 24px;">
-                    <h2 style="margin: 0; color: #19ff69; font-size: 26px;">🌱 PlantCare Hub</h2>
-                    <p style="margin: 6px 0 0; color: #9bb0a2; font-size: 13px;">User Verification System</p>
-                </div>
-                <div style="background: rgba(25, 255, 105, 0.08); border: 1px solid rgba(25, 255, 105, 0.25); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-                    <p style="margin: 0 0 8px; color: #e2f0e7; font-size: 14px;"><strong>Verification OTP</strong> for account:</p>
-                    <p style="margin: 0 0 16px; color: #19ff69; font-size: 16px; font-weight: 600;">{receiver_clean}</p>
-                    <div style="font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #19ff69; padding: 12px 0; font-family: monospace;">{otp}</div>
-                    <p style="margin: 10px 0 0; color: #8fa897; font-size: 12.5px;">⏱ Valid for 5 minutes.</p>
-                </div>
-                <p style="color: #9bb0a2; font-size: 12px; line-height: 1.5; margin: 0;">
-                    Dispatched securely via your connected Resend account ({resend_from}).
-                </p>
-            </div>
-            """
-            admin_text = f"PlantCare Hub OTP for {receiver_clean}: {otp}\nValid for 5 minutes."
-            send_resend_email(admin_target, admin_subject, admin_html, admin_text)
-            print(f"[OTP Dispatch] Successfully sent OTP notification to admin ({admin_target}) via Resend API.")
-            return True
-        except Exception as admin_err:
-            print(f"[OTP Dispatch] Admin Resend dispatch error: {admin_err}")
-            errors.append(f"Admin Resend dispatch: {admin_err}")
 
     # If all failed:
     detail_msg = " | ".join(errors) if errors else "No email dispatch service configured."
@@ -1132,7 +1067,7 @@ def login():
         except Exception as e:
             print("OTP EMAIL WARNING:", e)
 
-        flash(f"A 6-digit OTP code has been sent to your Gmail. Please check your inbox or spam folder.", "info")
+        flash(f"A 6-digit OTP code has been sent to {user['email']}. Please check your inbox or spam folder.", "info")
         return redirect(url_for("verify_otp"))
 
     return render_template("login.html")
@@ -1221,7 +1156,7 @@ def resend_otp():
     except Exception as e:
         print("RESEND OTP WARNING:", e)
 
-    flash("A fresh 6-digit OTP code has been sent to your Gmail. Please check your inbox or spam folder.", "success")
+    flash(f"A fresh 6-digit OTP code has been sent to {pending_email}. Please check your inbox or spam folder.", "success")
     return redirect(url_for("verify_otp"))
 
 
@@ -1261,7 +1196,7 @@ def forgot_password():
             "login.html",
             forgot_otp_mode=True,
             otp_email=user["email"],
-            message="Password reset OTP sent successfully to your Gmail. Please check your inbox or spam folder."
+            message=f"Password reset OTP sent successfully to {user['email']}. Please check your inbox or spam folder."
         )
 
     return render_template("login.html", forgot_mode=True)
