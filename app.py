@@ -741,6 +741,7 @@ def send_brevo_email(receiver_email, subject, html_content, text_content=None):
     else:
         candidate_senders = []
         for s in [
+            "plantcareh@gmail.com",
             (os.getenv("GMAIL_SENDER") or GMAIL_SENDER or "").strip(),
             (os.getenv("ADMIN_EMAIL") or ADMIN_EMAIL or "").strip(),
             "rajandas9080@gmail.com",
