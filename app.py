@@ -11,7 +11,7 @@ import hashlib
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from functools import wraps
 import requests
@@ -1872,25 +1872,45 @@ def checkout():
         pincode = request.form.get("pincode", "").strip()
         payment_method = request.form.get("payment_method", "Cash on Delivery").strip()
 
-        if not fullname or not phone or not address or not city or not pincode:
+        # Validate all fields are filled
+        if not fullname:
             conn.close()
-            flash("Please complete all shipping address fields.", "error")
-            return render_template(
-                "checkout.html",
-                user=user,
-                cart_items=cart_items,
-                subtotal=subtotal,
-                shipping_fee=shipping_fee,
-                total=total
-            )
+            flash("Please enter your Full Name.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not phone:
+            conn.close()
+            flash("Please enter your Phone Number.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not phone.isdigit() or len(phone) != 10:
+            conn.close()
+            flash("Phone Number must be exactly 10 digits (e.g. 9876543210).", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not address:
+            conn.close()
+            flash("Please enter your Delivery Street Address.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not city:
+            conn.close()
+            flash("Please enter your City / District.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not pincode:
+            conn.close()
+            flash("Please enter your Pincode.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
+        if not pincode.isdigit() or len(pincode) != 6:
+            conn.close()
+            flash("Pincode must be exactly 6 digits.", "error")
+            return render_template("checkout.html", user=user, cart_items=cart_items, subtotal=subtotal, shipping_fee=shipping_fee, total=total)
 
         # Generate unique human-readable order number
-        order_date_str = datetime.now().strftime("%Y%m%d")
+        IST = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.now(IST)
+        order_date_str = now_ist.strftime("%Y%m%d")
         random_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
         order_number = f"ORD-{order_date_str}-{random_suffix}"
 
-        # Insert Order with status 'Pending' (waiting for admin to accept!)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Insert Order with status 'Pending' (waiting for admin to accept!) — save in IST
+        now_str = now_ist.strftime("%Y-%m-%d %H:%M:%S")
         cur.execute("""
             INSERT INTO orders (
                 order_number, user_id, user_email, customer_name, customer_phone,
