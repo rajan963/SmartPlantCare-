@@ -225,6 +225,22 @@ button, input, select, textarea {
   color: #ffffff;
 }
 
+.btn-nav-register {
+  background: var(--primary);
+  color: #ffffff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: var(--radius-full);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.btn-nav-register:hover {
+  background: var(--primary-hover);
+  color: #ffffff;
+}
+
 .user-menu-wrap {
   position: relative;
 }

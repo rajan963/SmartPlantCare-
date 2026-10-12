@@ -74,7 +74,10 @@
                     </div>
                 {% else %}
                     <a href="{{ url_for('login') }}" class="btn-nav-login">
-                        <i class="fa-regular fa-user"></i> Login / Register
+                        <i class="fa-regular fa-user"></i> Login
+                    </a>
+                    <a href="{{ url_for('register') }}" class="btn-nav-register">
+                        Register
                     </a>
                 {% endif %}
 
