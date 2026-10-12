@@ -61,12 +61,6 @@
 <!-- Metric Cards -->
 <div class="metrics-grid">
     <div class="metric-card">
-        <h4>Total Sales Revenue</h4>
-        <div class="metric-value" style="color:#15803d;">₹{{ "%.0f"|format(total_sales) }}</div>
-        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">Accepted & fulfilled orders</div>
-    </div>
-
-    <div class="metric-card">
         <h4>Report Filtered Revenue</h4>
         <div class="metric-value" style="color:#0f172a;">₹{{ "%.0f"|format(total_rev_filtered) }}</div>
         <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">In selected period ({{ selected_date }})</div>
@@ -115,8 +109,6 @@
                     <th>Plant Price</th>
                     <th>Qty</th>
                     <th>Item Total</th>
-                    <th>Usi Din Ka Total Revenue</th>
-                    <th>Usi Din Ke Sold Plants</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -153,16 +145,6 @@
                         <strong style="color:#0f172a; font-size:0.95rem;">₹{{ "%.0f"|format(p.item_total) }}</strong>
                     </td>
                     <td>
-                        <span class="day-rev-badge">
-                            <i class="fa-solid fa-indian-rupee-sign"></i> ₹{{ "%.0f"|format(p.day_revenue) }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="day-plant-badge">
-                            <i class="fa-solid fa-seedling"></i> {{ p.day_plants_sold }} Plants
-                        </span>
-                    </td>
-                    <td>
                         <span class="status-badge status-{{ p.order_status|lower }}">
                             {{ p.order_status }}
                         </span>
@@ -170,7 +152,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="10" style="text-align:center; padding:40px; color:#64748b;">
+                    <td colspan="8" style="text-align:center; padding:40px; color:#64748b;">
                         <div style="font-size:2rem; margin-bottom:8px;"><i class="fa-solid fa-seedling"></i></div>
                         No customer plant purchase records found for the selected filter.
                     </td>

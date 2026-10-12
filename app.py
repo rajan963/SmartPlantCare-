@@ -1446,7 +1446,6 @@ def categories():
         "Flowering": {"icon": "🌸", "desc": "Fragrant and vibrant blooming roses, lilies, hibiscus, and jasmines to enrich garden color."},
         "Medicinal": {"icon": "🌿", "desc": "Sacred Holy Tulsi, soothing Aloe Vera, and organic healing herbs for family wellness."},
         "Indoor": {"icon": "🪴", "desc": "Lush foliage plants that flourish under indirect light and elevate room aesthetic."},
-        "Air Purifying": {"icon": "🍃", "desc": "Natural botanical detoxifiers certified to purify indoor air toxins and boost oxygen."},
         "Succulent": {"icon": "🌵", "desc": "Hardy, sculptural plants requiring minimal watering and thriving in sunlit windows."},
         "Outdoor": {"icon": "🌳", "desc": "Sun-loving hearty shrubs, decorative hedges, and terrace flowering plants."}
     }
