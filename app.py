@@ -24,7 +24,8 @@ from flask import (
     session,
     flash,
     make_response,
-    jsonify
+    jsonify,
+    send_from_directory
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -56,6 +57,16 @@ OTP_EXPIRY_MINUTES = 5
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+# Serve uploaded plant images — fallback to placeholder if file missing locally
+@app.route("/static/uploads/<path:filename>")
+def serve_upload(filename):
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(filepath):
+        return send_from_directory(UPLOAD_FOLDER, filename)
+    # File not found locally (e.g. uploaded on Render) — show placeholder
+    return send_from_directory(UPLOAD_FOLDER, "no_image.png")
 
 
 # ==============================================================================
