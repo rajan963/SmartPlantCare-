@@ -2436,28 +2436,39 @@ def get_sales_report_data(selected_date="all"):
     cur = conn.cursor()
 
     # 1. Daily Aggregates (Day's total plants sold & Day's total revenue)
-    daily_stats_query = """
+    # Only count accepted/completed orders to match dashboard Total Revenue
+    # Use orders.total_amount (includes shipping) to match dashboard SUM(total_amount)
+    daily_plants_query = """
         SELECT 
             SUBSTR(o.created_at, 1, 10) as order_date,
-            SUM(oi.quantity) as plants_sold,
-            SUM(oi.subtotal) as daily_revenue
+            SUM(oi.quantity) as plants_sold
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
-        WHERE o.order_status != 'Cancelled'
+        WHERE o.order_status IN ('Accepted', 'Shipped', 'Delivered')
         GROUP BY SUBSTR(o.created_at, 1, 10)
     """
-    daily_stats_rows = cur.execute(daily_stats_query).fetchall()
+    daily_rev_query = """
+        SELECT 
+            SUBSTR(created_at, 1, 10) as order_date,
+            SUM(total_amount) as daily_revenue
+        FROM orders
+        WHERE order_status IN ('Accepted', 'Shipped', 'Delivered')
+        GROUP BY SUBSTR(created_at, 1, 10)
+    """
+    daily_plants_rows = cur.execute(daily_plants_query).fetchall()
+    daily_rev_rows = cur.execute(daily_rev_query).fetchall()
+    daily_rev_map = {r["order_date"]: float(r["daily_revenue"] or 0.0) for r in daily_rev_rows}
     daily_stats_map = {
         r["order_date"]: {
             "plants_sold": int(r["plants_sold"] or 0),
-            "daily_revenue": float(r["daily_revenue"] or 0.0)
+            "daily_revenue": daily_rev_map.get(r["order_date"], 0.0)
         }
-        for r in daily_stats_rows
+        for r in daily_plants_rows
     }
 
     available_dates = sorted(list(daily_stats_map.keys()), reverse=True)
 
-    # 2. Detailed Purchase Items
+    # 2. Detailed Purchase Items — same filter as dashboard Total Revenue
     query = """
         SELECT 
             SUBSTR(o.created_at, 1, 10) as order_date,
@@ -2468,13 +2479,14 @@ def get_sales_report_data(selected_date="all"):
             o.customer_phone,
             o.order_status,
             o.payment_method,
+            o.total_amount as order_total,
             oi.plant_name,
             oi.price as plant_price,
             oi.quantity,
             oi.subtotal as item_total
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
-        WHERE o.order_status != 'Cancelled'
+        WHERE o.order_status IN ('Accepted', 'Shipped', 'Delivered')
     """
     params = []
     if selected_date and selected_date != "all":
@@ -2487,6 +2499,7 @@ def get_sales_report_data(selected_date="all"):
     purchases = []
     total_qty_filtered = 0
     total_rev_filtered = 0.0
+    unique_orders_filtered = set()
 
     for r in purchases_rows:
         item = dict(r)
@@ -2497,10 +2510,14 @@ def get_sales_report_data(selected_date="all"):
         item["day_revenue"] = day_stat["daily_revenue"]
         purchases.append(item)
         total_qty_filtered += item["quantity"]
-        total_rev_filtered += item["item_total"]
+        # Use order-level total_amount (includes shipping) to match dashboard Total Revenue
+        order_num = item["order_number"]
+        if order_num not in unique_orders_filtered:
+            total_rev_filtered += item["order_total"]
+            unique_orders_filtered.add(order_num)
 
     conn.close()
-    return purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered
+    return purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered, len(unique_orders_filtered)
 
 
 @app.route("/admin/sales")
@@ -2527,8 +2544,6 @@ def admin_sales():
         "SELECT COUNT(*) FROM orders WHERE order_status = 'Pending'"
     ).fetchone()[0]
 
-    avg_order_value = (total_sales / completed_orders_count) if completed_orders_count > 0 else 0.0
-
     # Top selling plants
     top_plants_rows = cur.execute("""
         SELECT oi.plant_name, SUM(oi.quantity) as total_qty, SUM(oi.subtotal) as total_sales
@@ -2551,7 +2566,11 @@ def admin_sales():
 
     # Detailed Customer Purchases Report & Daily Stats
     selected_date = request.args.get("date", "all").strip()
-    purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered = get_sales_report_data(selected_date)
+    purchases, daily_stats_map, available_dates, total_qty_filtered, total_rev_filtered, unique_orders_filtered = get_sales_report_data(selected_date)
+
+    # Avg order value: based on actual product value per checkout (excluding shipping fees)
+    total_product_value = sum(p["item_total"] for p in purchases)
+    avg_order_value = (total_product_value / unique_orders_filtered) if unique_orders_filtered > 0 else 0.0
 
     return render_template(
         "admin/sales.html",
@@ -2580,7 +2599,7 @@ def admin_download_report():
     Day's Total Plants Sold, Day's Total Revenue, and Order Status.
     """
     selected_date = request.args.get("date", "all").strip()
-    purchases, daily_stats_map, available_dates, total_qty, total_rev = get_sales_report_data(selected_date)
+    purchases, daily_stats_map, available_dates, total_qty, total_rev, _ = get_sales_report_data(selected_date)
 
     output = io.StringIO()
     writer = csv.writer(output)
